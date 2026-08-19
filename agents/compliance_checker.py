@@ -42,6 +42,24 @@ FORBIDDEN_TERMS = [
     "内部消息", "内幕", "暗箱操作",
 ]
 
+# ─── Prompt 注入检测模式 ───
+INJECTION_PATTERNS = [
+    # 角色劫持：试图让 Agent 忽略系统指令
+    r"忽略.{0,10}(以上|之前|前面).{0,10}(指令|规则|提示|prompt)",
+    r"ignore.{0,10}(above|previous|prior|system).{0,10}(instructions?|rules?|prompts?)",
+    r"你(现在)?是一个.{0,20}(黑客|攻击者|越狱|jailbreak)",
+    r"从现在起.{0,10}(你|你的).{0,10}(角色|身份|任务)",
+    # 系统提示泄露
+    r"(显示|输出|打印|告诉我).{0,10}(系统|system).{0,10}(提示|prompt|指令|规则)",
+    r"(repeat|print|show|output).{0,10}(system|initial).{0,10}(prompt|message|instruction)",
+    # 代码注入
+    r"(执行|运行|execute|run).{0,10}(代码|code|命令|command|shell|bash|cmd|powershell)",
+    r"(import|__import__|eval|exec|subprocess|os\.system|os\.popen)",
+    # 越狱模式
+    r"DAN.{0,5}(模式|mode)|Do Anything Now",
+    r"假装|假装你|pretend you are|act as if you",
+]
+
 COMPLIANCE_SYSTEM_PROMPT = """你是一个金融合规审查Agent，负责审查客服回复内容的合规性。
 
 审查维度：
@@ -67,13 +85,45 @@ class ComplianceCheckerAgent:
     def __init__(self, llm: ChatOpenAI):
         self.llm = llm
 
+    def _detect_injection(self, content: str) -> list[str]:
+        """
+        Prompt 注入检测（Q38）。
+        在用户输入进入 Agent 之前检查，检测常见的角色劫持/系统泄露/代码注入攻击。
+        """
+        violations = []
+        content_lower = content.lower()
+        for pattern in INJECTION_PATTERNS:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                violations.append(f"检测到疑似Prompt注入攻击: /{pattern}/")
+        return violations
+
     def _rule_based_check(self, content: str) -> list[str]:
-        """基于规则的快速检查（不依赖LLM，低延迟）"""
+        """
+        基于规则的快速检查（不依赖LLM，低延迟）。
+
+        否定词感知（Q35 — 误判控制）：
+        "不能保证收益"、"无法保证收益"、"无风险提示" 等合规表述
+        虽然包含违规词，但语义是否定/警示，不应误判为违规。
+        仅当违规词前无否定词时才判定为违规。
+        """
         violations = []
 
+        # 否定/警示前缀：命中这些前缀时，违规词是合规表述，不拦截
+        negation_prefix = r"(不|不能|无法|不会|并非|并非绝对|禁止|切勿|请勿|无|没有|不可|避免|提示|注意)"
+
         for term in FORBIDDEN_TERMS:
-            if term in content:
-                violations.append(f"包含违规金融用语: '{term}'")
+            # 查找所有出现位置
+            start = 0
+            while True:
+                idx = content.find(term, start)
+                if idx == -1:
+                    break
+                # 检查违规词前 6 个字符内是否有否定词
+                prefix_text = content[max(0, idx - 6):idx]
+                if not re.search(negation_prefix, prefix_text):
+                    violations.append(f"包含违规金融用语: '{term}'")
+                    break  # 同一词只报一次
+                start = idx + len(term)
 
         for pii_type, pattern in SENSITIVE_PATTERNS.items():
             if re.search(pattern, content):
@@ -184,7 +234,33 @@ class ComplianceCheckerAgent:
 
     @trace_agent_call("compliance_process")
     async def process(self, state: dict[str, Any]) -> dict[str, Any]:
-        """作为Graph节点处理状态"""
+        """
+        作为Graph节点处理状态。
+
+        两阶段检查：
+        1. 输入净化 — 检测用户消息中的 Prompt 注入攻击（Q38）
+        2. 输出审查 — 检查 Agent 回复的合规性（Q35）
+        """
+        # ── 阶段1: 输入净化（Prompt 注入检测）──
+        messages = state.get("messages", [])
+        if messages:
+            user_input = messages[-1].content if hasattr(messages[-1], "content") else ""
+            injection_violations = self._detect_injection(user_input)
+            if injection_violations:
+                return {
+                    **state,
+                    "compliance_passed": False,
+                    "sub_results": {
+                        **state.get("sub_results", {}),
+                        "compliance": {
+                            "passed": False,
+                            "risk_level": "high",
+                            "violations": injection_violations,
+                        },
+                    },
+                }
+
+        # ── 阶段2: 输出审查（Agent 回复合规检查）──
         sub_results = state.get("sub_results", {})
 
         content_to_check = ""

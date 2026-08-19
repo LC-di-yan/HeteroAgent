@@ -111,7 +111,27 @@ class TicketHandlerAgent:
 
     @trace_agent_call("ticket_analyze")
     async def analyze_request(self, user_message: str) -> dict:
-        """分析用户需求，提取工单信息"""
+        """
+        分析用户需求，提取工单信息。
+
+        先做规则预判（正则识别工单号 → 查询），再让 LLM 兜底分析，
+        提升工单查询的识别准确率。
+        """
+        import json
+        import re
+
+        # ── 规则预判：包含工单号 → 查询操作 ──
+        ticket_id_match = re.search(r"(TK-\d{8}-[A-F0-9]{6}|TK-\d{8}-\d{6})", user_message.upper())
+        if ticket_id_match:
+            return {
+                "action": "query",
+                "ticket_id": ticket_id_match.group(0),
+                "ticket_type": "general",
+                "priority": "low",
+                "summary": f"查询工单 {ticket_id_match.group(0)} 状态",
+                "details": user_message,
+            }
+
         messages = [
             SystemMessage(content=TICKET_SYSTEM_PROMPT),
             HumanMessage(content=f"用户消息: {user_message}"),
@@ -119,7 +139,6 @@ class TicketHandlerAgent:
 
         response = await self.llm.ainvoke(messages)
 
-        import json
         try:
             return json.loads(response.content)
         except json.JSONDecodeError:

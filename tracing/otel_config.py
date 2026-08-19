@@ -22,6 +22,13 @@ except ImportError:
 
 
 _tracer = None
+_global_metrics = None
+
+
+def set_global_metrics(m) -> None:
+    """注册全局 AgentMetrics 实例，供 trace_agent_call 装饰器自动上报。"""
+    global _global_metrics
+    _global_metrics = m
 
 
 def init_tracer(
@@ -87,10 +94,23 @@ def trace_agent_call(agent_name: str) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
             tracer = get_tracer()
+            start_time = time.time()
+            success = True
 
+            # ── 无OTEL时直接执行，但仍上报Metrics ──
             if tracer is None:
-                return await func(*args, **kwargs)
+                try:
+                    result = await func(*args, **kwargs)
+                    return result
+                except Exception:
+                    success = False
+                    raise
+                finally:
+                    duration_ms = (time.time() - start_time) * 1000
+                    if _global_metrics is not None:
+                        _global_metrics.record_call(agent_name, duration_ms, success)
 
+            # ── 有OTEL时创建Span并上报 ──
             span_name = f"agent.{agent_name}.{func.__name__}"
 
             with tracer.start_as_current_span(span_name) as span:
@@ -108,6 +128,9 @@ def trace_agent_call(agent_name: str) -> Callable:
                     if isinstance(result, dict):
                         span.set_attribute("agent.result_keys", str(list(result.keys())))
 
+                    if _global_metrics is not None:
+                        _global_metrics.record_call(agent_name, duration_ms, True)
+
                     return result
 
                 except Exception as e:
@@ -116,6 +139,10 @@ def trace_agent_call(agent_name: str) -> Callable:
                     span.set_attribute("agent.success", False)
                     span.set_attribute("agent.error", str(e))
                     span.record_exception(e)
+
+                    if _global_metrics is not None:
+                        _global_metrics.record_call(agent_name, duration_ms, False)
+
                     raise
 
         return wrapper

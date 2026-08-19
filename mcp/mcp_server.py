@@ -2,14 +2,21 @@
 MCP工具协议服务端 — Model Context Protocol实现
 遵循Anthropic MCP标准，通过JSON-RPC 2.0提供工具注册/发现/调用能力。
 支持动态工具扩展，Agent通过统一接口调用外部系统。
+包含熔断器（Circuit Breaker）：工具连续失败自动熔断，避免雪崩。
 """
 
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Awaitable
 from datetime import datetime
+
+
+# ─── 熔断器配置（Q20）───
+CIRCUIT_FAILURE_THRESHOLD = 3    # 连续失败 3 次触发熔断
+CIRCUIT_COOLDOWN_SECONDS = 60    # 熔断冷却 60 秒后自动恢复半开
 
 
 @dataclass
@@ -44,15 +51,19 @@ class MCPToolServer:
     3. 工具调用 (Tool Invocation) - 通过JSON-RPC 2.0协议调用
     4. 结果返回 (Result Delivery)
 
-    遵循MCP规范：
-    - 使用JSON-RPC 2.0消息格式
-    - 支持工具的inputSchema声明
-    - 提供标准化的错误码
+    熔断机制（Q20）：
+    - 每个工具维护连续失败计数
+    - 连续失败 >= CIRCUIT_FAILURE_THRESHOLD → 熔断打开，直接拒绝调用
+    - 冷却期后进入半开状态，允许一次探测调用
+    - 探测成功 → 熔断关闭；探测失败 → 重新熔断
     """
 
     def __init__(self):
         self._tools: dict[str, ToolDefinition] = {}
         self._call_log: list[ToolCallResult] = []
+        # ── 熔断状态 ──
+        self._failure_counts: dict[str, int] = {}      # 工具名 → 连续失败次数
+        self._circuit_open_until: dict[str, float] = {}  # 工具名 → 熔断打开截止时间
 
     def register_tool(self, tool: ToolDefinition) -> None:
         """注册一个MCP工具"""
@@ -80,6 +91,40 @@ class MCPToolServer:
             return func
         return decorator
 
+    # ─── 熔断器方法（Q20）───
+
+    def _is_circuit_open(self, tool_name: str) -> bool:
+        """检查工具是否处于熔断打开状态"""
+        until = self._circuit_open_until.get(tool_name, 0)
+        if until <= 0:
+            return False
+        if time.time() > until:
+            # 冷却结束 → 半开状态，删除标记允许探测
+            del self._circuit_open_until[tool_name]
+            return False
+        return True
+
+    def _trip_circuit(self, tool_name: str) -> None:
+        """触发熔断：记录打开时间"""
+        self._circuit_open_until[tool_name] = time.time() + CIRCUIT_COOLDOWN_SECONDS
+        self._failure_counts[tool_name] = 0  # 熔断打开后重置失败计数
+
+    def get_circuit_status(self) -> dict[str, dict]:
+        """获取所有工具的熔断状态（供 /api/metrics 展示）"""
+        status = {}
+        for name in self._tools:
+            state = "closed"
+            if self._is_circuit_open(name):
+                state = "open"
+            elif self._failure_counts.get(name, 0) > 0:
+                state = "half-open"
+            status[name] = {
+                "state": state,
+                "consecutive_failures": self._failure_counts.get(name, 0),
+                "cooldown_remaining_s": max(0, self._circuit_open_until.get(name, 0) - time.time()),
+            }
+        return status
+
     def list_tools(self, category: str | None = None) -> list[dict]:
         """
         工具发现：列出所有可用工具。
@@ -101,8 +146,9 @@ class MCPToolServer:
         """
         工具调用：执行指定工具。
         对应MCP的 tools/call 方法。
+        内置熔断器：熔断打开时直接拒绝，冷却后自动恢复。
         """
-        import time
+        import time as _time
 
         tool = self._tools.get(name)
         if tool is None:
@@ -114,10 +160,23 @@ class MCPToolServer:
             self._call_log.append(result)
             return result
 
-        start = time.time()
+        # ── 熔断检查：打开则直接拒绝 ──
+        if self._is_circuit_open(name):
+            result = ToolCallResult(
+                tool_name=name,
+                success=False,
+                error=f"Tool '{name}' 已熔断（连续失败超阈值），冷却中。请稍后重试。",
+            )
+            self._call_log.append(result)
+            return result
+
+        start = _time.time()
         try:
             output = await tool.handler(**arguments)
-            duration_ms = (time.time() - start) * 1000
+            duration_ms = (_time.time() - start) * 1000
+
+            # 成功 → 重置失败计数
+            self._failure_counts[name] = 0
 
             result = ToolCallResult(
                 tool_name=name,
@@ -126,7 +185,13 @@ class MCPToolServer:
                 duration_ms=duration_ms,
             )
         except Exception as e:
-            duration_ms = (time.time() - start) * 1000
+            duration_ms = (_time.time() - start) * 1000
+
+            # 失败 → 连续失败计数 +1，超阈值触发熔断
+            self._failure_counts[name] = self._failure_counts.get(name, 0) + 1
+            if self._failure_counts[name] >= CIRCUIT_FAILURE_THRESHOLD:
+                self._trip_circuit(name)
+
             result = ToolCallResult(
                 tool_name=name,
                 success=False,
