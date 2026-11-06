@@ -17,7 +17,7 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -674,24 +674,46 @@ def create_app(
         }
 
     async def _event_stream(
-        message: str, user_id: str, session_id: str | None
+        message: str, user_id: str, session_id: str | None, protocol: str = "legacy"
     ) -> AsyncGenerator[str, None]:
         session_id = session_id or str(uuid.uuid4())
-        yield _sse({"type": "session", "session_id": session_id})
+        encoder = None
+        if protocol == "agui":
+            from events.agui import AGUIEncoder
+
+            encoder = AGUIEncoder(thread_id=session_id)
+
+        def emit(event: dict[str, Any]) -> str:
+            if encoder is None:
+                return _sse(event)
+            return "".join(
+                f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                for item in encoder.encode(event)
+            )
+
+        yield emit({"type": "session", "session_id": session_id})
         try:
             async for event in _stream_events(message, user_id, session_id):
-                yield _sse(event)
-            yield _sse({"type": "done"})
+                chunk = emit(event)
+                if chunk:
+                    yield chunk
+            tail = emit({"type": "done"})
+            if tail:
+                yield tail
         except HTTPException as exc:
-            yield _sse({"type": "error", "status": exc.status_code, "message": str(exc.detail)})
+            yield emit({"type": "error", "status": exc.status_code, "message": str(exc.detail)})
         except Exception as exc:  # noqa: BLE001 - SSE 内不能抛，转成错误事件
             logger.exception("SSE 流式失败")
-            yield _sse({"type": "error", "message": str(exc)})
+            yield emit({"type": "error", "message": str(exc)})
 
     @app.post("/api/chat/stream")
-    async def chat_stream_post(request: ChatRequest, principal: str = Depends(limited)):
+    async def chat_stream_post(
+        request: ChatRequest,
+        protocol: Literal["legacy", "agui"] = "legacy",
+        principal: str = Depends(limited),
+    ):
         return StreamingResponse(
-            _event_stream(request.message, request.user_id, request.session_id),
+            _event_stream(request.message, request.user_id, request.session_id, protocol),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -701,10 +723,11 @@ def create_app(
         message: str,
         user_id: str = "anonymous",
         session_id: str | None = None,
+        protocol: Literal["legacy", "agui"] = "legacy",
         principal: str = Depends(limited),
     ):
         return StreamingResponse(
-            _event_stream(message, user_id, session_id),
+            _event_stream(message, user_id, session_id, protocol),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Deprecation": "true"},
         )
