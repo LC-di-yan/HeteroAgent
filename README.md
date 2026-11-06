@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-282%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-285%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -48,7 +48,7 @@
 | 工具 | 官方 MCP SDK（`tooling/`）+ `create_agent` 工具循环，每次调用产生 `execute_tool` span |
 | 检索 | FAISS 向量 + BM25（单字+双字混合分词）混合检索 + RRF 融合；分数归一化到 [0,1]；支持 Contextual Retrieval 入库 |
 | 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |
-| 安全 | 注入检测前置（NFKC/零宽对抗归一化）+ 可选模型护栏链（分类器超时/故障策略可配）、API Key 鉴权、限流、长度上限 |
+| 安全 | 注入检测前置（NFKC/零宽对抗归一化）+ 可选模型护栏链、API Key 鉴权、全端点限流（含管理端点）、长度上限 |
 | 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；聊天界面内可直接通过/拒绝；哈希链审计 |
 | 记忆 | Redis 短期记忆（tiktoken 预算）+ 跨会话用户事实（LangGraph Store，按 org/user 隔离）+ 有界 LRU embedding 缓存 |
 | 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 文本导出 |
@@ -176,14 +176,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 282 项离线测试
+├── tests/                   # 285 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 282 passed（全部离线，无需 API Key）
+python -m pytest -q          # 285 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 ```
