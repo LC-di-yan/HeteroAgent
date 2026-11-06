@@ -118,7 +118,7 @@ class KnowledgeRAGAgent:
         except Exception as exc:
             logger.warning("重排失败，保持原序: %s", exc)
             return documents[:top_k]
-        ranked = sorted(zip(scores, documents), key=lambda item: float(item[0]), reverse=True)
+        ranked = sorted(zip(scores, documents, strict=True), key=lambda item: float(item[0]), reverse=True)
         out = []
         for score, doc in ranked[:top_k]:
             enriched = dict(doc)

@@ -1,8 +1,6 @@
 """端到端：真实 LangGraph 拓扑 + 假 LLM + 桩向量库（离线）。"""
 from __future__ import annotations
 
-import asyncio
-
 from fastapi.testclient import TestClient
 
 from agents.supervisor import create_supervisor_graph

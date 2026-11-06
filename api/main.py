@@ -235,10 +235,23 @@ def create_app(
             if docs is not None and len(docs) == 0:
                 for content, source in SEED_KB:
                     app.state.ltm.add_document(content=content, source=source)
+                # G8：写入后必须落盘，否则索引只活在内存里
+                save = getattr(app.state.ltm, "save", None)
+                if callable(save):
+                    save()
+                    logger.info("知识库已索引并持久化")
         except Exception as exc:
             logger.warning("知识库预置失败: %s", exc)
 
         yield
+
+        # 关闭前再落盘一次，避免运行期新增文档丢失
+        try:
+            save = getattr(app.state.ltm, "save", None)
+            if callable(save):
+                save()
+        except Exception as exc:
+            logger.warning("知识库持久化失败: %s", exc)
 
     app = FastAPI(
         title="HeteroAgent 智能客服多Agent系统",

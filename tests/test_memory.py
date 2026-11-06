@@ -40,7 +40,6 @@ from memory.long_term import (
     create_vector_store,
     rrf_fuse,
     to_unit_score,
-    tokenize,
 )
 from memory.short_term import ShortTermMemory, count_tokens
 
@@ -506,8 +505,8 @@ class TestEmbeddingCache:
         for i in range(4100):
             ltm._embed_sync("cache-probe-" + str(i))
         assert len(ltm._embedding_cache) == 4096
-        oldest = hashlib.md5("cache-probe-0".encode()).hexdigest()
-        newest = hashlib.md5("cache-probe-4099".encode()).hexdigest()
+        oldest = hashlib.md5(b"cache-probe-0").hexdigest()
+        newest = hashlib.md5(b"cache-probe-4099").hexdigest()
         assert oldest not in ltm._embedding_cache
         assert newest in ltm._embedding_cache
 

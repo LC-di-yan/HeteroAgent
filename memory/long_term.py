@@ -853,7 +853,7 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
             np.ascontiguousarray(np.asarray(query_vector, dtype=np.float32).reshape(1, -1)), k
         )
         results: list[dict] = []
-        for score, raw_index in zip(scores[0], indices[0]):
+        for score, raw_index in zip(scores[0], indices[0], strict=True):
             position = int(raw_index)
             if position < 0 or position >= len(self._documents):
                 continue
