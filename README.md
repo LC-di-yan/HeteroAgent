@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-265%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-272%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -51,7 +51,7 @@
 | 安全 | 注入检测前置（NFKC/零宽对抗归一化）+ 可选模型护栏链（分类器超时/故障策略可配）、API Key 鉴权、限流、长度上限 |
 | 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；聊天界面内可直接通过/拒绝；哈希链审计 |
 | 记忆 | Redis 短期记忆（tiktoken 预算）+ 跨会话用户事实（LangGraph Store，按 org/user 隔离）+ 有界 LRU embedding 缓存 |
-| 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95 指标、成本累计 |
+| 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 文本导出 |
 | 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集（漏放/误杀/脱敏）+ 30 条路由标注集；`python -m evaluation.run` 统一门禁（非 0 退出码） |
 
 ## 架构
@@ -126,6 +126,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | GET | `/api/approvals/audit/chain` | 审计链（含完整性校验结果） |
 | GET | `/api/metrics` | Agent 指标（P50/P95/错误率）+ 工具调用日志 |
 | POST | `/api/evaluations` | 运行 Golden Set 评估（鉴权 + 并发保护） |
+| GET | `/metrics` | Prometheus 文本指标（默认识别 `X-API-Key`；`METRICS_PUBLIC=true` 可放开） |
 | GET | `/health/live` · `/health/ready` | 存活 / 就绪探针 |
 | GET/POST | `/api/tools` · `/api/tools/call` | 调试端点，需 `ENABLE_DEBUG_TOOL_ENDPOINTS=true` |
 
@@ -174,14 +175,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 265 项离线测试
+├── tests/                   # 272 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 265 passed（全部离线，无需 API Key）
+python -m pytest -q          # 272 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 

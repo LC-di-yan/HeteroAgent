@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -893,6 +893,17 @@ def create_app(
             out["tool_call_log"] = mcp.get_call_log(last_n=20)
             out["circuit_breaker"] = mcp.get_circuit_status()
         return out
+
+    # ── Prometheus 文本指标（集群抓取用） ──
+
+    @app.get("/metrics")
+    async def prometheus_metrics(request: Request):
+        if not st.metrics_public:
+            await auth(request)  # 与其它管理端点同一鉴权口径
+        from tracing.metrics_export import render_prometheus
+
+        body = render_prometheus(app.state.metrics, version=APP_VERSION)
+        return PlainTextResponse(body, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     # ── 评估：POST + 鉴权 + 并发保护（G14） ──
 

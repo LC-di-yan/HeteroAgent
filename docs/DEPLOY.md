@@ -85,6 +85,23 @@ docker run --rm -p 8000:8000 --env-file .env \
 
 ---
 
+## 2.5 监控接入（Prometheus 抓取）
+
+`GET /metrics` 输出 Prometheus 文本格式（counter/gauge + 分位数标签），无需额外依赖：
+
+```yaml
+scrape_configs:
+  - job_name: heteroagent
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["heteroagent:8000"]
+    # 端点默认需要鉴权；要么配置 METRICS_PUBLIC=true，要么加 bearer/header 注入
+```
+
+主要指标：`heteroagent_agent_calls_total`、`heteroagent_agent_errors_total`、
+`heteroagent_agent_duration_ms{quantile="0.5|0.95|0.99"}`、`heteroagent_llm_tokens_total{direction}`、
+`heteroagent_llm_cost_usd_total`、`heteroagent_cost_usd_total`。
+
 ## 3. docker compose 一体化栈
 
 ```bash

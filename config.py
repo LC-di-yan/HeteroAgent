@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     otel_traces_sampler: str = "parentbased_always_on"
     otel_console_export: bool = False
 
+    # ── Prometheus 文本端点：默认需鉴权，集群抓取可按需放开 ──
+    metrics_public: bool = False
+
     # ── 调试端点（默认关闭）──
     enable_debug_tool_endpoints: bool = False
 
