@@ -155,8 +155,10 @@ def _wrap_with_timeout(agent_name: str, agent_func, settings: Settings = default
 class SupervisorNode:
     """路由决策、HITL 闸门与结果聚合。"""
 
-    def __init__(self, llm: Any, settings: Settings = default_settings, approval_store: Any | None = None):
-        self.llm = llm
+    def __init__(self, llm: Any, settings: Settings = default_settings, approval_store: Any | None = None,
+                 light_llm: Any | None = None):
+        # 路由是"轻任务"：配置了 LIGHT_MODEL_NAME 时用轻模型，降低延迟与成本
+        self.llm = light_llm or llm
         self.settings = settings
         self.approval_store = approval_store
 
@@ -387,6 +389,7 @@ def create_supervisor_graph(
     approval_store: Any | None = None,
     context_store: Any | None = None,
     checkpointer: Any | None = None,
+    light_llm: Any | None = None,
 ):
     """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
@@ -417,7 +420,7 @@ def create_supervisor_graph(
     # 没有 checkpointer 就无法中断/恢复，此时不注入 store，走 API 层外部审批兜底
     hitl_store = approval_store if checkpointer is not None else None
 
-    supervisor = SupervisorNode(llm, settings, approval_store=hitl_store)
+    supervisor = SupervisorNode(llm, settings, approval_store=hitl_store, light_llm=light_llm)
     knowledge_agent = KnowledgeRAGAgent(
         llm, long_term_memory, settings=settings, context_store=context_store
     )

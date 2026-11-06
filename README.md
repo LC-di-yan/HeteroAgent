@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-278%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-282%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -139,7 +139,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — / 官方地址 | 模型凭据，支持兼容网关 |
-| `MODEL_NAME` | `gpt-5.1` | 主模型；`LIGHT_MODEL_NAME` 可指定轻模型 |
+| `MODEL_NAME` / `LIGHT_MODEL_NAME` | `gpt-5.1` / 空 | 主模型用于生成与合规；轻模型仅用于路由（空=复用主模型） |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
 | `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
 | `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1]；用 `make calibrate` 在标注集上校准 |
@@ -162,6 +162,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 │   ├── knowledge_rag.py     # 改写 → 检索 → 重排 → 生成 → 自检
 │   ├── ticket_handler.py    # 工单（解析失败不产生副作用）
 │   ├── compliance_checker.py# 规则 + LLM 两阶段审查（fail-closed）
+│   ├── llm_factory.py       # 主/轻模型分级（路由走轻模型）
 │   ├── react_agent.py       # create_agent 工具调用工厂
 │   └── demo_mode.py         # 离线演示：脚本化模型 + 关键字知识库
 ├── security/
@@ -175,14 +176,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 278 项离线测试
+├── tests/                   # 282 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 278 passed（全部离线，无需 API Key）
+python -m pytest -q          # 282 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 ```

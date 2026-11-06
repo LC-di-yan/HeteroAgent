@@ -163,24 +163,10 @@ def _sanitize_for_release(text: str) -> str:
 
 
 def build_chat_llm(settings: Settings):
-    if settings.demo_mode:
-        from agents.demo_mode import ScriptedChatModel
+    """主模型（保留旧名字供调用方兼容）。"""
+    from agents.llm_factory import build_main_llm
 
-        logger.warning("DEMO_MODE 已启用：使用脚本化假模型，仅用于演示，不可用于生产")
-        return ScriptedChatModel()
-
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        model=settings.model_name,
-        temperature=settings.temperature,
-        api_key=settings.openai_api_key or None,
-        base_url=settings.openai_base_url or None,
-        timeout=settings.llm_timeout_seconds,
-        max_retries=settings.llm_max_retries,
-        # SSE 端点需要 token 级流式；ainvoke 仍会聚合为完整消息
-        streaming=True,
-    )
+    return build_main_llm(settings)
 
 
 def _build_default_stm(settings: Settings):
@@ -262,6 +248,15 @@ def create_app(
                 app.state.llm = build_chat_llm(st)
             except Exception as exc:
                 logger.error("LLM 初始化失败（请检查 OPENAI_API_KEY）: %s", exc)
+        if app.state.llm is not None and getattr(app.state, "light_llm", None) is None:
+            try:
+                from agents.llm_factory import build_light_llm
+
+                app.state.light_llm = build_light_llm(st, main_llm=app.state.llm)
+            except Exception as exc:
+                logger.warning("轻模型初始化失败，路由复用主模型: %s", exc)
+                app.state.light_llm = app.state.llm
+
         if app.state.graph is None and app.state.llm is not None:
             try:
                 from agents.supervisor import create_supervisor_graph, open_async_checkpointer
@@ -281,6 +276,7 @@ def create_app(
                     approval_store=app.state.approvals,
                     context_store=getattr(app.state, "context_store", None),
                     checkpointer=checkpointer,
+                    light_llm=getattr(app.state, "light_llm", None),
                 )
                 app.state.checkpoint_cm = checkpoint_cm
                 # 图内 HITL 需要 checkpointer 才能中断/恢复
@@ -327,6 +323,7 @@ def create_app(
     )
     app.state.settings = st
     app.state.graph = graph
+    app.state.light_llm = None
     # 注入的图若带 checkpointer，则支持图内 interrupt/恢复
     app.state.hitl_enabled = bool(graph is not None and getattr(graph, "checkpointer", None) is not None)
     app.state.llm = llm
