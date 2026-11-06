@@ -100,10 +100,29 @@ class EmbeddingUnavailableError(RuntimeError):
 
 
 def tokenize(text: str) -> list[str]:
-    """中英文混合分词：连续字母/数字归为一个 token，中文逐字切分。"""
+    """中英文混合分词（无第三方分词器依赖）。
+
+    - 英文/数字：连续串作为一个 token；
+    - 中文：按 **双字 bigram** 切分（"退款流程" → 退款/款流/流程），单字词保留单字。
+      bigram 比逐字切分更能表达词边界（"退" 不再和 "退休" 混淆），
+      同时避免引入 jieba 之类的重依赖。
+    """
     if not text:
         return []
-    return re.findall(r"[一-龥]|[a-zA-Z0-9]+", str(text).lower())
+    normalized = str(text).lower()
+    tokens: list[str] = re.findall(r"[a-z0-9]+", normalized)
+    for run in re.findall(r"[\u4e00-\u9fff]+", normalized):
+        tokens.extend(run)  # 单字：保证召回（"退" 也能命中）
+        if len(run) > 1:  # 双字：提供词边界信号（"退款" 比 单字 更具体）
+            tokens.extend(run[i : i + 2] for i in range(len(run) - 1))
+    return tokens
+
+
+def document_index_text(doc: dict) -> str:
+    """写入 BM25 / Embedding 的文本：若有 contextual retrieval 的前缀则拼上。"""
+    context = str((doc.get("metadata") or {}).get("context") or "").strip()
+    content = str(doc.get("content", "") or "")
+    return context + "\n" + content if context else content
 
 
 def rrf_fuse(
@@ -680,7 +699,7 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
         """把一条已在 _documents 末尾的文档登记到去重表与 BM25 预分词缓存。"""
         self._doc_by_id[doc["id"]] = doc
         self._content_to_id[doc["content"]] = doc["id"]
-        self._bm25.add(doc["id"], doc["content"])
+        self._bm25.add(doc["id"], document_index_text(doc))
 
     def _init_index(self) -> bool:
         """兼容旧内部方法名：等价于 load()。"""
@@ -794,8 +813,17 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
 
     # ---- 写入 ----
 
-    def add_document(self, content: str, source: str = "", metadata: dict | None = None) -> str:
+    def add_document(
+        self,
+        content: str,
+        source: str = "",
+        metadata: dict | None = None,
+        context: str | None = None,
+    ) -> str:
         """新增文档，返回 doc_id = md5(content)。
+
+        context：contextual retrieval 前缀（见 memory/ingest.py）——
+        只参与向量化与 BM25 索引，不进入返回的 content，也不改变去重键。
 
         同内容重复调用直接返回旧 id（不重复入索引、不重复调用 Embedding）。
         Embedding 失败时抛 EmbeddingUnavailableError，且内部状态保持不变。
@@ -809,7 +837,11 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
             return existing_id
 
         doc_id = hashlib.md5(content.encode("utf-8")).hexdigest()
-        vector = self._embed_sync(content)  # 先算向量：失败则状态保持干净
+        doc_meta = dict(metadata or {})
+        if context and str(context).strip():
+            doc_meta["context"] = str(context).strip()
+        index_text = document_index_text({"content": content, "metadata": doc_meta})
+        vector = self._embed_sync(index_text)  # 先算向量：失败则状态保持干净
 
         if self._index is not None:
             self._index.add(np.ascontiguousarray(vector.reshape(1, -1), dtype=np.float32))
@@ -818,7 +850,7 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
             "id": doc_id,
             "content": content,
             "source": source,
-            "metadata": dict(metadata or {}),
+            "metadata": doc_meta,
         }
         self._documents.append(doc)
         self._register(doc)
@@ -833,6 +865,7 @@ class LongTermMemory(EmbeddingMixin, HybridSearchMixin):
                     content=doc.get("content", ""),
                     source=doc.get("source", ""),
                     metadata=doc.get("metadata") or {},
+                    context=doc.get("context"),
                 )
             )
         return doc_ids
@@ -978,18 +1011,28 @@ class MilvusLongTermMemory(EmbeddingMixin, HybridSearchMixin):
     def _register(self, doc: dict) -> None:
         self._doc_by_id[doc["id"]] = doc
         self._content_to_id[doc["content"]] = doc["id"]
-        self._bm25.add(doc["id"], doc["content"])
+        self._bm25.add(doc["id"], document_index_text(doc))
 
     # ---- 写入 ----
 
-    def add_document(self, content: str, source: str = "", metadata: dict | None = None) -> str:
+    def add_document(
+        self,
+        content: str,
+        source: str = "",
+        metadata: dict | None = None,
+        context: str | None = None,
+    ) -> str:
         if not isinstance(content, str) or not content.strip():
             raise ValueError("content 必须为非空字符串")
         existing_id = self._content_to_id.get(content)
         if existing_id is not None:
             return existing_id
         doc_id = hashlib.md5(content.encode("utf-8")).hexdigest()
-        vector = self._embed_sync(content)  # Embedding 失败 -> 抛错且不写库
+        doc_meta = dict(metadata or {})
+        if context and str(context).strip():
+            doc_meta["context"] = str(context).strip()
+        index_text = document_index_text({"content": content, "metadata": doc_meta})
+        vector = self._embed_sync(index_text)  # Embedding 失败 -> 抛错且不写库
         self._collection.insert(
             [[doc_id], [content[:65535]], [str(source)[:512]], [vector.tolist()]]
         )
@@ -997,7 +1040,7 @@ class MilvusLongTermMemory(EmbeddingMixin, HybridSearchMixin):
             "id": doc_id,
             "content": content,
             "source": source,
-            "metadata": dict(metadata or {}),
+            "metadata": doc_meta,
         }
         self._documents.append(doc)
         self._register(doc)
@@ -1011,6 +1054,7 @@ class MilvusLongTermMemory(EmbeddingMixin, HybridSearchMixin):
                     content=doc.get("content", ""),
                     source=doc.get("source", ""),
                     metadata=doc.get("metadata") or {},
+                    context=doc.get("context"),
                 )
             )
         return doc_ids

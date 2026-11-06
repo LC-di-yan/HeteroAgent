@@ -43,3 +43,10 @@ static/.DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
+# ── T-P2-07 追加：镜像裁剪补充 ──
+# var/ 是本地检查点与运行时状态（已在上方"本地运行时状态"段列出，
+# 这里显式再声明一次，保证 compose 挂载 ./var 时不会被吸进构建上下文）
+var/
+# 文档截图：README 引用的 PNG 对运行时无意义（当前 2 张共约 170 KB）
+docs/screenshots/

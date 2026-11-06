@@ -1,0 +1,102 @@
+# ══════════════════════════════════════════════════════════════════════
+# ⚠ 这是模板，不是生效的 workflow。
+#
+# 启用步骤（需要 GitHub token 具备 workflow scope）：
+#   1) gh auth refresh -s workflow
+#   2) mkdir -p .github/workflows && cp docs/ci/ci.yml.example .github/workflows/ci.yml
+#   3) git add .github/workflows/ci.yml && git commit -m "ci: enable workflow" && git push
+#
+# 背景：账户当前 token 的 scope 为 gist/read:org/repo/user，缺 workflow，
+# GitHub 会拒绝任何包含 .github/workflows/ 的推送（refusing to allow an OAuth App
+# to create or update workflow）。
+# ══════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════
+# HeteroAgent CI 门禁（T-P2-05 基础设施部分）
+#
+# lint-test：静态检查 + 全量离线单测。测试不访问网络，因此这里刻意把
+#            OPENAI_API_KEY 置为空串、REQUIRE_AUTH=false、
+#            OTEL_CONSOLE_EXPORT=false，保证 CI 与本地行为一致且无密钥泄漏面。
+# package  ：仅在 push 到 main 时构建镜像（push: false，只验证可构建性，
+#            不推任何 registry；镜像版本策略属于后续任务）。
+#
+# 已知事实：Dockerfile 里有 "COPY mcp/ ./mcp/"，而仓库根的实际目录是
+# tooling/（见 docs/adr/0006），因此 package  job 在 Dockerfile 修正前会失败。
+# 本工作流不修改 Dockerfile（不在本次改动范围内），失败即为真实回归信号。
+# ══════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支的旧运行直接作废：CI 只关心最新提交的结果
+concurrency:
+  group: "CI-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+# 最小权限：只需要读代码，不写任何资源
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    env:
+      # 空串而非省略：省略会让 config.py 读到宿主环境，行为不可复现
+      OPENAI_API_KEY: ""
+      REQUIRE_AUTH: "false"
+      OTEL_CONSOLE_EXPORT: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        # 运行时依赖来自 requirements.txt（与 pyproject.toml 同步）；
+        # pytest / pytest-asyncio / ruff 属于开发工具，CI 里显式安装
+        run: python -m pip install -r requirements.txt pytest pytest-asyncio ruff
+
+      - name: Ruff check
+        # docs 目录是文档与截图，不参与 lint（E501 已全局忽略，见 pyproject.toml）
+        run: ruff check . --exclude docs
+
+      - name: Pytest (offline)
+        run: pytest -q
+
+  package:
+    name: Build image
+    needs: lint-test
+    # 构建镜像只对 main 分支的推送有意义：PR 阶段 lint-test 已覆盖代码正确性，
+    # 构建留给合并后的主干，节省 runner 时间
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: false
+          tags: |
+            heteroagent:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

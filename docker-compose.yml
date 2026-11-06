@@ -1,0 +1,72 @@
+# ══════════════════════════════════════════════════════════════════════
+# HeteroAgent 本地一体化编排（T-P2-07 基础设施部分）
+#
+# 默认形态：**单副本 app** + Redis + Jaeger。
+#   - 单 worker：内存审批队列 / FAISS 索引 / 检查点句柄都是进程内状态，
+#     多 worker 会状态分裂，扩容只能水平加副本（Dockerfile CMD 已锁 workers=1）。
+#   - 多副本注意：APPROVAL_STORE 必须是 redis（memory 队列不跨进程共享），
+#     且检查点需要所有副本可见的共享存储；当前 Settings 的 CHECKPOINT_BACKEND
+#     只支持 memory|sqlite，sqlite 落 ./var 不能跨副本共享 —— 详见 docs/DEPLOY.md。
+#
+# 用法：cp .env.example .env 并填 OPENAI_API_KEY，然后 make compose-up
+#      （或 docker compose up -d --build；本机只有独立版时用 docker-compose）
+# ══════════════════════════════════════════════════════════════════════
+
+services:
+  app:
+    build: .
+    image: heteroagent:0.3.0
+    # 宿主 8000 → 容器 8000；容器内 uvicorn 绑定 0.0.0.0
+    ports:
+      - "8000:8000"
+    # 先 cp .env.example .env 并填 OPENAI_API_KEY，否则 graph 起不来、/health/ready=503
+    env_file:
+      - .env
+    # 容器内服务发现地址覆盖 .env 里的宿主默认值；最后写者胜（environment > env_file）
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      APPROVAL_STORE: redis
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      CHECKPOINT_PATH: /app/var/checkpoints.db
+    # 检查点落宿主 ./var，容器重启不丢会话状态（镜像内不含 var/，见 .dockerignore）
+    volumes:
+      - ./var:/app/var
+    depends_on:
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    # 用标准库 urllib 探活：slim 镜像没有 curl/wget
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4); sys.exit(0 if r.status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+  redis:
+    image: redis:8-alpine
+    # 不暴露宿主端口：Redis 无密码，只允许容器网络内访问（短期记忆 + 审批队列 + 限流）
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    # 16686 = Web UI，4317 = OTLP gRPC collector（应用上报 traces 的端口）
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+volumes:
+  redis-data:

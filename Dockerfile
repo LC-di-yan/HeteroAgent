@@ -57,7 +57,7 @@ COPY --chown=appuser:appgroup memory/ ./memory/
 COPY --chown=appuser:appgroup security/ ./security/
 COPY --chown=appuser:appgroup tracing/ ./tracing/
 COPY --chown=appuser:appgroup evaluation/ ./evaluation/
-COPY --chown=appuser:appgroup mcp/ ./mcp/
+COPY --chown=appuser:appgroup tooling/ ./tooling/
 COPY --chown=appuser:appgroup static/ ./static/
 
 # 切换到 appuser：此后 CMD / HEALTHCHECK 均以非 root 身份执行
@@ -66,8 +66,7 @@ USER appuser
 EXPOSE 8000
 
 # 健康检查：slim 镜像没有 curl，用标准库 urllib 打活探针端点。
-# 探针目标是 /health/live —— 由 T-P0-11 在 api/main.py 中提供；
-# 当前仓库只有 /health（api/main.py:411），补齐前容器会显示 unhealthy。
+# 探针目标是 /health/live（存活）；/health/ready 供编排系统判断依赖是否就绪。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=4); sys.exit(0 if r.status == 200 else 1)"]
 
