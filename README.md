@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-209%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-211%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -102,7 +102,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/chat` | 主聊天接口；合规不通过时返回 `approval_id` |
-| POST | `/api/chat/stream` | SSE 流式：逐节点真实进度（`stage`）+ 最终回复 + 审批中断 |
+| POST | `/api/chat/stream` | SSE 流式：节点进度 `stage` + token 级 `token`（仅最终答案）+ `response` + 审批中断 |
 | GET | `/api/chat/stream` | 兼容旧调用，已标记 deprecated |
 | GET | `/api/history/{session_id}` | 会话历史 |
 | GET | `/api/approvals` | 待审批列表 |
@@ -157,14 +157,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器 + 38 条版本化数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 209 项离线测试
+├── tests/                   # 211 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 209 passed（全部离线，无需 API Key）
+python -m pytest -q          # 211 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 

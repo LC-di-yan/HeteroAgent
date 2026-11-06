@@ -117,6 +117,37 @@ async def _build_context_messages(stm: Any, session_id: str, current_message: st
     return truncated or [HumanMessage(content=current_message)]
 
 
+async def _iter_graph_stream(graph: Any, state: dict[str, Any], config: dict[str, Any]):
+    """优先用 updates+messages 双模式；图不支持时退回 updates（兼容测试桩）。
+
+    yield (mode, payload)：
+    - ("updates", {node: delta})
+    - ("messages", (chunk, metadata))
+    """
+    agen = graph.astream(state, config=config, stream_mode=["updates", "messages"])
+    try:
+        first = await agen.__anext__()
+    except StopAsyncIteration:
+        return
+    except (TypeError, ValueError, NotImplementedError):
+        async for chunk in graph.astream(state, config=config, stream_mode="updates"):
+            yield "updates", chunk
+        return
+
+    item = first
+    try:
+        while True:
+            if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str):
+                yield item[0], item[1]
+            else:
+                yield "updates", item
+            item = await agen.__anext__()
+    except StopAsyncIteration:
+        return
+    finally:
+        await agen.aclose()
+
+
 def _sanitize_for_release(text: str) -> str:
     """审批放行前的最后清洗：绝不外发被拦截原文（G3）。"""
     try:
@@ -141,6 +172,8 @@ def build_chat_llm(settings: Settings):
         base_url=settings.openai_base_url or None,
         timeout=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
+        # SSE 端点需要 token 级流式；ainvoke 仍会聚合为完整消息
+        streaming=True,
     )
 
 
@@ -547,7 +580,20 @@ def create_app(
         state: dict[str, Any] = {}
         approval_id: str | None = None
 
-        async for chunk in graph.astream(initial_state, config=config, stream_mode="updates"):
+        async for mode, payload in _iter_graph_stream(graph, initial_state, config):
+            if mode == "messages":
+                # token 级增量：只推"最终答案"这次生成（按 tag 过滤，避免中间推理泄漏）
+                try:
+                    message_chunk, metadata = payload
+                except (TypeError, ValueError):
+                    continue
+                text = getattr(message_chunk, "content", "")
+                tags = (metadata or {}).get("tags") or []
+                if isinstance(text, str) and text and "final_answer" in tags:
+                    yield {"type": "token", "text": text}
+                continue
+
+            chunk = payload
             if not isinstance(chunk, dict):
                 continue
             if "__interrupt__" in chunk:

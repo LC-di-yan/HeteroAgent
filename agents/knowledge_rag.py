@@ -160,10 +160,15 @@ class KnowledgeRAGAgent:
             f"来源: {doc.get('source', '未知')}\n内容: {doc.get('content', '')}"
             for doc in context_docs
         )
-        response = await self.llm.ainvoke([
-            SystemMessage(content=RAG_SYSTEM_PROMPT),
-            HumanMessage(content=f"用户问题: {query}\n\n检索到的参考文档:\n{context}"),
-        ])
+        # tags 用于流式输出筛选：只有最终答案的 token 才推给前端，
+        # 查询改写/自检的中间 token 不应出现在用户界面上（T-P2-06）。
+        response = await self.llm.ainvoke(
+            [
+                SystemMessage(content=RAG_SYSTEM_PROMPT),
+                HumanMessage(content=f"用户问题: {query}\n\n检索到的参考文档:\n{context}"),
+            ],
+            config={"tags": ["final_answer"]},
+        )
         return (getattr(response, "content", "") or "").strip()
 
     @trace_agent_call("rag_self_correct")

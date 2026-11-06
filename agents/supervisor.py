@@ -355,6 +355,7 @@ def create_supervisor_graph(
             base_url=settings.openai_base_url or None,
             timeout=settings.llm_timeout_seconds,
             max_retries=0,
+            streaming=True,
         )
 
     checkpointer = _build_checkpointer(settings) if enable_checkpointing else None

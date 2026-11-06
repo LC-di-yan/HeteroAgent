@@ -649,8 +649,11 @@ async function sendMessage() {
   typingRow.classList.add('active'); scroll();
 
   try {
-    const params = new URLSearchParams({ message: text, user_id: 'web-user', session_id: sessionId });
-    const resp = await fetch(API + '/api/chat/stream?' + params, { method: 'GET' });
+    const resp = await fetch(API + '/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, user_id: 'web-user', session_id: sessionId })
+    });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
     const reader = resp.body.getReader();
@@ -677,8 +680,11 @@ async function sendMessage() {
             // 更新 typing 提示为当前阶段
             const tip = typingRow.querySelector('.typing-bubble');
             if (tip) tip.textContent = evt.label || '处理中…';
+          } else if (evt.type === 'token') {
+            appendToken(evt.text || '');
           } else if (evt.type === 'response') {
             typingRow.classList.remove('active');
+            clearStream();
             addMsg('bot', evt.response, evt.intent, evt.compliance_passed);
           } else if (evt.type === 'error') {
             typingRow.classList.remove('active');
@@ -695,6 +701,35 @@ async function sendMessage() {
     addMsg('bot', '⚠️ 请求失败：' + e.message, 'error', false);
   }
   isSending = false; sendBtn.disabled = false; input.focus(); scroll();
+}
+
+/* ── 流式输出：token 先落到临时气泡，最终 response 到达时用权威结果替换 ── */
+let streamRow = null, streamBubble = null, streamText = '';
+
+function startStream() {
+  if (streamRow) return;
+  typingRow.classList.remove('active');
+  streamRow = document.createElement('div'); streamRow.className = 'msg bot';
+  const av = document.createElement('div'); av.className = 'msg-avatar'; av.textContent = '🤖';
+  const body = document.createElement('div'); body.className = 'msg-body';
+  streamBubble = document.createElement('div'); streamBubble.className = 'msg-bubble'; streamBubble.textContent = '';
+  body.appendChild(streamBubble);
+  streamRow.appendChild(av); streamRow.appendChild(body);
+  container.insertBefore(streamRow, typingRow);
+  streamText = '';
+}
+
+function appendToken(t) {
+  if (!t) return;
+  startStream();
+  streamText += t;
+  streamBubble.textContent = streamText;
+  scroll();
+}
+
+function clearStream() {
+  if (streamRow) streamRow.remove();
+  streamRow = null; streamBubble = null; streamText = '';
 }
 
 function addMsg(role, text, intent, compliance) {

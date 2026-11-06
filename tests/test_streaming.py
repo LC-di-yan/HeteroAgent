@@ -133,3 +133,52 @@ def test_stream_rejects_injection_before_graph():
     events = _events(resp.text)
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 400
+
+class _Chunk:
+    def __init__(self, text: str) -> None:
+        self.content = text
+
+
+class TokenGraph:
+    """yield (mode, payload) 双模式事件的假图。"""
+
+    def __init__(self, items):
+        self.items = items
+
+    async def astream(self, state, config=None, stream_mode=None):
+        for item in self.items:
+            yield item
+
+
+def test_token_stream_filters_by_final_answer_tag():
+    items = [
+        ("updates", {"supervisor_route": {"intent": "knowledge_rag"}}),
+        ("messages", (_Chunk("年化"), {"tags": ["final_answer"], "langgraph_node": "knowledge_rag"})),
+        ("messages", (_Chunk("收益率 3.5%"), {"tags": ["final_answer"], "langgraph_node": "knowledge_rag"})),
+        # 中间推理（查询改写）不应推给前端
+        ("messages", (_Chunk("理财产品A收益"), {"tags": ["query_rewrite"], "langgraph_node": "knowledge_rag"})),
+        ("updates", {"synthesize": {"final_response": "年化收益率 3.5%", "intent": "knowledge_rag"}}),
+    ]
+    st = Settings(require_auth=False, api_keys="", rate_limit_per_minute=1000)
+    app = create_app(settings=st, graph=TokenGraph(items), short_term_memory=StubSTM(),
+                     long_term_memory=StubLTM(), approvals=MemoryApprovalStore())
+    client = TestClient(app)
+
+    resp = client.post("/api/chat/stream", json={"message": "收益多少", "user_id": "u1", "session_id": "tok"})
+    events = _events(resp.text)
+    tokens = [e["text"] for e in events if e["type"] == "token"]
+    assert tokens == ["年化", "收益率 3.5%"]
+    assert "理财产品A收益" not in "".join(tokens)
+
+    response = next(e for e in events if e["type"] == "response")
+    assert response["response"] == "年化收益率 3.5%"
+    assert any(e["type"] == "stage" and e["node"] == "supervisor_route" for e in events)
+
+
+def test_single_mode_graph_still_supported():
+    """只支持 updates 的图（不返回元组）仍应工作，不产生 token 事件。"""
+    client, _ = _app([{"synthesize": {"final_response": "答案", "intent": "knowledge_rag"}}])
+    resp = client.post("/api/chat/stream", json={"message": "hi", "user_id": "u1", "session_id": "s9"})
+    events = _events(resp.text)
+    assert not [e for e in events if e["type"] == "token"]
+    assert any(e["type"] == "response" for e in events)
