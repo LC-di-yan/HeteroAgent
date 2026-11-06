@@ -327,6 +327,56 @@ def _build_checkpointer(settings: Settings):
     return MemorySaver()
 
 
+async def open_async_checkpointer(settings: Settings):
+    """为异步图创建检查点，返回 (context_manager | None, saver)。
+
+    调用方关闭时需执行 await cm.__aexit__(None, None, None)。
+
+    为什么需要它：SqliteSaver / PostgresSaver 是同步实现，
+    在 graph.ainvoke 下会抛 "does not support async methods"（真实事故）。
+    异步图必须用 AsyncSqliteSaver / AsyncPostgresSaver。
+    """
+    backend = settings.checkpoint_backend
+    if backend == "memory":
+        return None, MemorySaver()
+
+    if backend == "sqlite":
+        try:
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        except ImportError as exc:  # 缺 aiosqlite 时退回内存，保证服务可用
+            logger.warning("缺少 aiosqlite，回退内存检查点（重启后 HITL 状态会丢）: %s", exc)
+            return None, MemorySaver()
+
+        import os
+
+        os.makedirs(os.path.dirname(settings.checkpoint_path) or ".", exist_ok=True)
+        cm = AsyncSqliteSaver.from_conn_string(settings.checkpoint_path)
+        saver = await cm.__aenter__()
+        logger.info("检查点后端: AsyncSqliteSaver(%s)", settings.checkpoint_path)
+        return cm, saver
+
+    if backend == "postgres":
+        dsn = (settings.postgres_dsn or "").strip()
+        if not dsn:
+            raise RuntimeError("CHECKPOINT_BACKEND=postgres 但 POSTGRES_DSN 为空")
+        try:
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        except ImportError as exc:
+            raise RuntimeError(
+                "缺少 langgraph-checkpoint-postgres，请执行 pip install langgraph-checkpoint-postgres"
+            ) from exc
+        cm = AsyncPostgresSaver.from_conn_string(dsn)
+        saver = await cm.__aenter__()
+        try:
+            await saver.setup()
+        except Exception as exc:  # 表已存在或权限不足
+            logger.warning("Postgres 检查点建表失败（可能已存在）: %s", exc)
+        logger.info("检查点后端: AsyncPostgresSaver（多副本共享）")
+        return cm, saver
+
+    raise RuntimeError(f"未知的 checkpoint_backend: {backend}")
+
+
 def create_supervisor_graph(
     llm: Any | None = None,
     working_memory: Any | None = None,   # 已废弃：保留参数仅为兼容旧调用
@@ -336,6 +386,7 @@ def create_supervisor_graph(
     settings: Settings = default_settings,
     approval_store: Any | None = None,
     context_store: Any | None = None,
+    checkpointer: Any | None = None,
 ):
     """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
@@ -359,7 +410,10 @@ def create_supervisor_graph(
             streaming=True,
         )
 
-    checkpointer = _build_checkpointer(settings) if enable_checkpointing else None
+    if checkpointer is None and enable_checkpointing:
+        # 这里的同步 saver 只适用于 graph.invoke；
+        # 异步图需由调用方传入 AsyncSqliteSaver/AsyncPostgresSaver（见 open_async_checkpointer）。
+        checkpointer = _build_checkpointer(settings)
     # 没有 checkpointer 就无法中断/恢复，此时不注入 store，走 API 层外部审批兜底
     hitl_store = approval_store if checkpointer is not None else None
 

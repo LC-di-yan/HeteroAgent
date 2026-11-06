@@ -163,6 +163,8 @@ compose 默认**单副本**。加副本（`docker compose up -d --scale app=2`�
      `PostgresSaver.setup()`（幂等建表）。缺包或 DSN 为空会抛明确错误，不静默降级。
    - 需额外安装（可选依赖）：`pip install langgraph-checkpoint-postgres`
      （见 `pyproject.toml` 的 `[project.optional-dependencies].postgres`）。
+   - 异步图注意：`api` 启动时用 `AsyncSqliteSaver`（异步图不能配同步 `SqliteSaver`，
+     否则 `graph.ainvoke` 会抛 "does not support async methods"）。同步实现仅适用于 `graph.invoke`。
    - 未启用 Postgres 时，`var/checkpoints.db` 明确为**单副本专用**；多副本临时形态是
      「粘性路由 + 每副本独立 var 卷」——只保会话连续性，重启即丢，且无法跨副本恢复 HITL 中断。
 3. **短期记忆/限流共享**：`REDIS_URL` 必须指向所有副本共用的 Redis（compose 内已共用同一服务）。

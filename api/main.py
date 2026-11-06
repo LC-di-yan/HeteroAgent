@@ -264,7 +264,15 @@ def create_app(
                 logger.error("LLM 初始化失败（请检查 OPENAI_API_KEY）: %s", exc)
         if app.state.graph is None and app.state.llm is not None:
             try:
-                from agents.supervisor import create_supervisor_graph
+                from agents.supervisor import create_supervisor_graph, open_async_checkpointer
+
+                try:
+                    checkpoint_cm, checkpointer = await open_async_checkpointer(st)
+                except Exception as exc:
+                    logger.error("检查点初始化失败，回退内存（重启后 HITL 状态会丢）: %s", exc)
+                    from langgraph.checkpoint.memory import MemorySaver
+
+                    checkpoint_cm, checkpointer = None, MemorySaver()
 
                 app.state.graph = create_supervisor_graph(
                     llm=app.state.llm,
@@ -272,7 +280,9 @@ def create_app(
                     settings=st,
                     approval_store=app.state.approvals,
                     context_store=getattr(app.state, "context_store", None),
+                    checkpointer=checkpointer,
                 )
+                app.state.checkpoint_cm = checkpoint_cm
                 # 图内 HITL 需要 checkpointer 才能中断/恢复
                 app.state.hitl_enabled = getattr(app.state.graph, "checkpointer", None) is not None
             except Exception as exc:
@@ -301,6 +311,14 @@ def create_app(
                 save()
         except Exception as exc:
             logger.warning("知识库持久化失败: %s", exc)
+
+        # 关闭异步检查点连接
+        cm = getattr(app.state, "checkpoint_cm", None)
+        if cm is not None:
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("检查点关闭失败: %s", exc)
 
     app = FastAPI(
         title="HeteroAgent 智能客服多Agent系统",

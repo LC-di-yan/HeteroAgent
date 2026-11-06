@@ -82,3 +82,17 @@ def test_demo_mode_blocks_forbidden_claim():
     body = resp.json()
     assert body["compliance_passed"] is False
     assert body["approval_id"]
+
+def test_demo_mode_with_sqlite_checkpoint(tmp_path):
+    """回归：同步 SqliteSaver 在 ainvoke 下会抛 NotImplementedError（真实事故）。"""
+    st = Settings(
+        demo_mode=True, require_auth=False, api_keys="", rate_limit_per_minute=1000,
+        checkpoint_backend="sqlite", checkpoint_path=str(tmp_path / "cp.db"),
+    )
+    app = create_app(settings=st, approvals=MemoryApprovalStore())
+    with TestClient(app) as client:
+        assert client.get("/health/ready").status_code == 200
+        resp = client.post("/api/chat",
+                           json={"message": "理财产品A的收益率是多少", "user_id": "u1", "session_id": "sqlite"})
+        assert resp.status_code == 200, resp.text
+        assert "3.5%" in resp.json()["response"]
