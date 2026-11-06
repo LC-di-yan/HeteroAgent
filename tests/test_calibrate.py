@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from evaluation.calibrate import Calibration, calibrate, collect_scores
+from evaluation.calibrate import calibrate, collect_scores
 
 
 class _Case:
