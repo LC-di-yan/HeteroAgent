@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-169%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-180%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -37,7 +37,8 @@
 
 | 域 | 能力 |
 | --- | --- |
-| 编排 | LangGraph 固定拓扑（可预测/可审计），路由异常类型化重试，超时降级 |
+| 编排 | LangGraph 固定拓扑（可预测/可审计），路由/工单由 Pydantic schema 约束，异常类型化重试 |
+| 工具 | 官方 MCP SDK（`tooling/`）+ `create_agent` 工具循环，每次调用产生 `execute_tool` span |
 | 检索 | FAISS 向量 + BM25 混合检索 + RRF 融合；分数归一化到 [0,1]，阈值可配置 |
 | 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |
 | 安全 | 注入检测前置（NFKC/零宽对抗归一化）、API Key 鉴权、滑动窗口限流、请求体与消息长度上限 |
@@ -156,14 +157,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器 + 38 条版本化数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 169 项离线测试
+├── tests/                   # 180 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 169 passed（全部离线，无需 API Key）
+python -m pytest -q          # 180 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 
@@ -187,7 +188,7 @@ python -m ruff check .       # All checks passed
 - [ ] **P2** 检索质量（contextual retrieval、中文重排）、评估入 CI、AG-UI 流式、多副本
 - [ ] **P3** 按需：A2A、多模态、语义缓存、模型分级路由
 
-详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)
+详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)；关键决策记录见 [docs/adr/](docs/adr/README.md)（固定拓扑、fail-closed、禁用伪向量、MCP 迁移、HITL、布局策略、工单双实现过渡）。
 
 ## 许可
 

@@ -18,6 +18,8 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agents.llm_utils import run_structured
+from agents.schemas import ComplianceVerdict
 from config import Settings
 from config import settings as default_settings
 from tracing.otel_config import trace_agent_call
@@ -211,6 +213,19 @@ class ComplianceCheckerAgent:
             SystemMessage(content=COMPLIANCE_SYSTEM_PROMPT),
             HumanMessage(content=f"请审查以下客服回复内容的合规性：\n\n{content}"),
         ]
+
+        # 首选结构化输出（T-P1-03）：schema 约束下不存在"解析失败"路径
+        verdict = await run_structured(self.llm, ComplianceVerdict, messages, label="compliance")
+        if verdict is not None:
+            return ComplianceResult(
+                passed=verdict.passed,
+                risk_level=verdict.risk_level,
+                violations=list(verdict.violations),
+                suggestions=list(verdict.suggestions),
+                sanitized_content=sanitized,
+            )
+
+        # 兜底：模型不支持结构化输出时按文本解析，且保持 fail-closed
         try:
             response = await self.llm.ainvoke(messages)
         except Exception as exc:

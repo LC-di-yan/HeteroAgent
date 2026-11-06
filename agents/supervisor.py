@@ -18,6 +18,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
+from agents.llm_utils import run_structured
+from agents.schemas import RouteDecision
 from config import Settings
 from config import settings as default_settings
 from tracing.otel_config import trace_agent_call
@@ -169,6 +171,11 @@ class SupervisorNode:
             *messages[-6:],
             HumanMessage(content="只返回 knowledge_rag 或 ticket_handler。"),
         ]
+        # 首选结构化输出（T-P1-03）：target 由 schema 限定，避免自由文本歧义
+        decision = await run_structured(self.llm, RouteDecision, routing_prompt, label="route")
+        if decision is not None:
+            return {**state, "intent": _ROUTE_ALIASES.get(decision.target, ROUTE_KNOWLEDGE)}
+
         response = await self.llm.ainvoke(routing_prompt)
         content = getattr(response, "content", "") or ""
         intent = parse_route(content)
@@ -331,7 +338,15 @@ def create_supervisor_graph(
 
     supervisor = SupervisorNode(llm, settings, approval_store=hitl_store)
     knowledge_agent = KnowledgeRAGAgent(llm, long_term_memory, settings=settings)
-    ticket_agent = TicketHandlerAgent(llm)
+    tools = None
+    if getattr(settings, "tool_calling_enabled", True):
+        try:
+            from agents.toolset import build_tools
+
+            tools = build_tools()
+        except Exception as exc:  # 工具集不可用不影响主链路
+            logger.warning("工具集加载失败: %s", exc)
+    ticket_agent = TicketHandlerAgent(llm, tools=tools)
     compliance_agent = ComplianceCheckerAgent(llm)
 
     graph = StateGraph(AgentState)

@@ -15,6 +15,8 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from agents.llm_utils import run_structured
+from agents.schemas import TicketAction
 from tracing.otel_config import trace_agent_call
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,16 @@ class TicketPriority(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
+
+
+TICKET_TOOL_PROMPT = """你是工单处理助手。根据用户诉求决定是否调用工具：
+
+- 用户要办理退款/理赔/开户/投诉等业务 → 调用 ticket_create 创建工单
+- 用户提供订单号或问订单情况 → 调用 order_query
+- 涉及金额较大或资金安全 → 先调用 risk_check 再建单
+- 只是咨询、无需建单 → 直接回答，不要调用工具
+
+创建工单后，用中文回复并带上真实工单号，不要编造工单号。"""
 
 
 TICKET_SYSTEM_PROMPT = """你是一个专业的工单处理Agent，负责处理客户的业务办理请求。
@@ -108,9 +120,24 @@ class TicketStore:
 class TicketHandlerAgent:
     """工单处理Agent"""
 
-    def __init__(self, llm: ChatOpenAI, ticket_store: TicketStore | None = None):
+    def __init__(self, llm: ChatOpenAI, ticket_store: TicketStore | None = None,
+                 tools: list[Any] | None = None, enable_tool_calling: bool = True):
         self.llm = llm
         self.ticket_store = ticket_store or TicketStore()
+        self._tool_agent = None
+        if enable_tool_calling and tools:
+            # T-P1-07：模型支持 tool calling 时，工单动作交给 create_agent 的工具循环，
+            # 不再依赖"LLM 写 JSON → 我们解析"这条脆弱链路。
+            try:
+                from agents.react_agent import build_tool_agent
+
+                self._tool_agent = build_tool_agent(
+                    llm, tools, TICKET_TOOL_PROMPT, "ticket_agent"
+                )
+                logger.info("工单 Agent 已启用工具调用（%d 个工具）", len(tools))
+            except Exception as exc:
+                logger.info("工具调用不可用，回退文本解析: %s", exc)
+                self._tool_agent = None
 
     @trace_agent_call("ticket_analyze")
     async def analyze_request(self, user_message: str) -> dict | None:
@@ -140,6 +167,11 @@ class TicketHandlerAgent:
             SystemMessage(content=TICKET_SYSTEM_PROMPT),
             HumanMessage(content=f"用户消息: {user_message}"),
         ]
+
+        # 首选结构化输出（T-P1-03）：schema 保证字段合法；失败返回 None 而非默认建单
+        action = await run_structured(self.llm, TicketAction, messages, label="ticket")
+        if action is not None:
+            return action.model_dump()
 
         response = await self.llm.ainvoke(messages)
         raw = (getattr(response, "content", "") or "").strip()
@@ -212,6 +244,23 @@ class TicketHandlerAgent:
             f"🔄 更新时间: {ticket['updated_at']}"
         )
 
+    @trace_agent_call("ticket_tool_call")
+    async def _process_with_tools(self, user_message: str) -> str | None:
+        """走 create_agent 的工具循环；失败返回 None 由调用方回退文本解析。"""
+        try:
+            out = await self._tool_agent.ainvoke(
+                {"messages": [HumanMessage(content=user_message)]}
+            )
+        except Exception as exc:
+            logger.warning("工具调用失败，回退文本解析: %s", type(exc).__name__)
+            return None
+        messages = out.get("messages", []) if isinstance(out, dict) else []
+        for msg in reversed(messages):
+            content = getattr(msg, "content", "")
+            if msg.__class__.__name__ == "AIMessage" and isinstance(content, str) and content.strip():
+                return content.strip()
+        return None
+
     @trace_agent_call("ticket_handler_process")
     async def process(self, state: dict[str, Any]) -> dict[str, Any]:
         """作为Graph节点处理状态"""
@@ -222,6 +271,26 @@ class TicketHandlerAgent:
             return state
 
         last_message = messages[-1].content
+
+        # 工单号查询走规则快路径（无需 LLM / 工具）
+        import re as _re
+
+        if _re.search(r"TK-\d{8}-[A-F0-9]{6}", last_message.upper()):
+            ticket_info = await self.analyze_request(last_message)
+            result = (
+                await self.query_ticket(ticket_info["ticket_id"])
+                if ticket_info and ticket_info.get("ticket_id")
+                else "未找到对应工单，请核对工单号。"
+            )
+            return {**state, "sub_results": {**state.get("sub_results", {}), "ticket_handler": result}}
+
+        # 工具调用路径（T-P1-07）：动作由 tool_calls 驱动，而非解析模型文本
+        if self._tool_agent is not None:
+            tool_answer = await self._process_with_tools(last_message)
+            if tool_answer:
+                return {**state, "sub_results": {
+                    **state.get("sub_results", {}), "ticket_handler": tool_answer}}
+
         ticket_info = await self.analyze_request(last_message)
 
         if ticket_info is None:
