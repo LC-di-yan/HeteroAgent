@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     compliance_negation_window: int = 8
 
     # ── 检查点 ──
-    checkpoint_backend: Literal["memory", "sqlite"] = "memory"
+    checkpoint_backend: Literal["memory", "sqlite"] = "sqlite"
     checkpoint_path: str = "./var/checkpoints.db"
     checkpoint_retention_days: int = 14
 

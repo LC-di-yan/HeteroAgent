@@ -213,15 +213,23 @@ def test_debug_tools_disabled_by_default():
 
 
 def test_debug_tools_enabled_and_metrics():
-    from mcp.mcp_server import MCPToolServer, create_default_tools
-
     settings = Settings(require_auth=False, api_keys="", rate_limit_per_minute=1000,
                         enable_debug_tool_endpoints=True)
     app = create_app(settings=settings, graph=StubGraph(_ok_result()), short_term_memory=StubSTM(),
-                     long_term_memory=StubLTM(), approvals=MemoryApprovalStore(),
-                     mcp_server=create_default_tools(MCPToolServer()))
+                     long_term_memory=StubLTM(), approvals=MemoryApprovalStore())
     client = TestClient(app)
-    assert client.get("/api/tools").status_code == 200
+    tools = client.get("/api/tools")
+    assert tools.status_code == 200
+    names = {t["name"] for t in tools.json()["tools"]}
+    assert {"order_query", "knowledge_search", "ticket_create", "risk_check"} <= names
+
+    called = client.post("/api/tools/call", json={"name": "risk_check",
+                                                  "arguments": {"user_id": "u1", "action": "buy", "amount": 60000}})
+    assert called.status_code == 200
+    assert called.json()["success"] is True
+    assert called.json()["result"]["risk_level"] == "high"
+
     metrics = client.get("/api/metrics")
     assert metrics.status_code == 200
     assert "agent_metrics" in metrics.json()
+    assert "circuit_breaker" in metrics.json()

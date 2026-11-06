@@ -12,7 +12,7 @@
 
 [project]
 name = "heteroagent"
-version = "0.2.0"
+version = "0.3.0"
 description = "HeteroAgent — 多智能体客服系统（LangGraph + FastAPI）"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -38,6 +38,8 @@ dependencies = [
     "httpx>=0.28.1,<1",
     # ── 环境变量装载（config.py 的 .env 支持）──
     "python-dotenv>=1.0.1,<2",
+    # ── 工具协议（官方 MCP SDK；本地包已改名 tooling/，不再遮蔽）──
+    "mcp>=1.27.2,<3",
     # ── 全链路追踪 ──
     "opentelemetry-api>=1.42.1,<2",
     "opentelemetry-sdk>=1.42.1,<2",

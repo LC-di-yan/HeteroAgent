@@ -51,6 +51,8 @@ class AgentState(TypedDict):
     compliance_passed: bool
     final_response: str
     retry_count: int
+    approval_id: str | None
+    approval_decision: dict[str, Any] | None
 
 
 # ─── 路由解析 ───
@@ -149,11 +151,12 @@ def _wrap_with_timeout(agent_name: str, agent_func, settings: Settings = default
 
 
 class SupervisorNode:
-    """路由决策与结果聚合。"""
+    """路由决策、HITL 闸门与结果聚合。"""
 
-    def __init__(self, llm: Any, settings: Settings = default_settings):
+    def __init__(self, llm: Any, settings: Settings = default_settings, approval_store: Any | None = None):
         self.llm = llm
         self.settings = settings
+        self.approval_store = approval_store
 
     @trace_agent_call("supervisor")
     async def route_decision(self, state: AgentState) -> AgentState:
@@ -173,23 +176,90 @@ class SupervisorNode:
             intent = ROUTE_KNOWLEDGE
         return {**state, "intent": intent}
 
+    @trace_agent_call("compliance_gate")
+    async def compliance_gate(self, state: AgentState) -> AgentState:
+        """HITL 闸门（T-P1-05）：合规未通过时在图内 interrupt()，等待人工审批后恢复。
+
+        只有在注入了 approval_store 且图带 checkpointer 时才会真正中断；
+        否则原样放行，由 API 层的外部审批队列兜底（保持向后兼容）。
+        """
+        from langgraph.types import interrupt
+
+        if state.get("compliance_passed", True):
+            return state
+        if self.approval_store is None:
+            return state
+
+        sub_results = state.get("sub_results", {})
+        info = sub_results.get("compliance") if isinstance(sub_results.get("compliance"), dict) else {}
+        violations = list(info.get("violations", []) or [])
+        risk_level = str(info.get("risk_level", "high"))
+        agent_responses = {
+            key: value for key, value in sub_results.items()
+            if key != "compliance" and isinstance(value, str) and value.strip()
+        }
+        messages = state.get("messages") or []
+        user_message = getattr(messages[-1], "content", "") if messages else ""
+
+        record = await self.approval_store.new_request(
+            tenant_id=state.get("user_id", "anonymous"),
+            session_id=state.get("session_id", ""),
+            trace_id=state.get("trace_id", ""),
+            user_message=user_message,
+            agent_responses=agent_responses,
+            violations=violations,
+            risk_level=risk_level,
+            intent=str(state.get("intent", "unknown")),
+        )
+        decision = interrupt({
+            "approval_id": record.approval_id,
+            "reason": "compliance",
+            "violations": violations,
+            "risk_level": risk_level,
+        })
+        approved = bool(decision.get("approved")) if isinstance(decision, dict) else False
+        logger.info("HITL 决策 approval_id=%s approved=%s", record.approval_id, approved)
+        return {
+            **state,
+            "approval_id": record.approval_id,
+            "approval_decision": {
+                "approved": approved,
+                "actor": str(decision.get("actor", "")) if isinstance(decision, dict) else "",
+                "reason": str(decision.get("reason", "")) if isinstance(decision, dict) else "",
+            },
+            "compliance_passed": approved,
+        }
+
     @trace_agent_call("supervisor_synthesize")
     async def synthesize_response(self, state: AgentState) -> AgentState:
         """聚合子结果。合规未通过时只给中性转人工提示，不编造任何单据编号。"""
         sub_results = state.get("sub_results", {})
         compliance_passed = state.get("compliance_passed", True)
+        decision = state.get("approval_decision") or {}
+        parts = [
+            value.strip()
+            for key, value in sub_results.items()
+            if key != "compliance" and isinstance(value, str) and value.strip()
+        ]
 
-        if not compliance_passed:
+        if decision.get("approved") is True:
+            # 人工放行：先清洗违规用语/PII，绝不放回原文（G3）
+            from agents.compliance_checker import sanitize_output
+
+            body = "\n\n".join(sanitize_output(part) for part in parts)
+            final_response = (
+                f"✅ [人工审批通过] {body}" if body
+                else "您的请求已由人工审核通过，客服人员将尽快处理。"
+            )
+        elif decision and decision.get("approved") is False:
+            # 已有人工结论且为拒绝：明确告知未通过，不再说"转入审核中"
+            final_response = "❌ 您的请求经人工审核未通过。如有疑问，请联系人工客服。"
+        elif not compliance_passed:
             final_response = (
                 "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
                 "客服人员核实后会尽快与您联系。"
             )
         else:
-            parts = [
-                value.strip()
-                for key, value in sub_results.items()
-                if key != "compliance" and isinstance(value, str) and value.strip()
-            ]
             final_response = (
                 "\n\n".join(parts)
                 if parts
@@ -232,8 +302,13 @@ def create_supervisor_graph(
     long_term_memory: Any | None = None,
     enable_checkpointing: bool = True,
     settings: Settings = default_settings,
+    approval_store: Any | None = None,
 ):
-    """构建 Supervisor 编排图（保持原有 5 节点语义）。"""
+    """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
+
+    approval_store 与 checkpointer 同时存在时，合规失败会在图内 interrupt()，
+    审批通过后由 Command(resume=...) 恢复执行（T-P1-05）。
+    """
     from agents.compliance_checker import ComplianceCheckerAgent
     from agents.knowledge_rag import KnowledgeRAGAgent
     from agents.ticket_handler import TicketHandlerAgent
@@ -250,7 +325,11 @@ def create_supervisor_graph(
             max_retries=0,
         )
 
-    supervisor = SupervisorNode(llm, settings)
+    checkpointer = _build_checkpointer(settings) if enable_checkpointing else None
+    # 没有 checkpointer 就无法中断/恢复，此时不注入 store，走 API 层外部审批兜底
+    hitl_store = approval_store if checkpointer is not None else None
+
+    supervisor = SupervisorNode(llm, settings, approval_store=hitl_store)
     knowledge_agent = KnowledgeRAGAgent(llm, long_term_memory, settings=settings)
     ticket_agent = TicketHandlerAgent(llm)
     compliance_agent = ComplianceCheckerAgent(llm)
@@ -260,6 +339,7 @@ def create_supervisor_graph(
     graph.add_node("knowledge_rag", _wrap_with_timeout(ROUTE_KNOWLEDGE, knowledge_agent.process, settings))
     graph.add_node("ticket_handler", _wrap_with_timeout(ROUTE_TICKET, ticket_agent.process, settings))
     graph.add_node("compliance_check", _wrap_with_timeout("compliance_check", compliance_agent.process, settings))
+    graph.add_node("compliance_gate", supervisor.compliance_gate)
     graph.add_node("synthesize", supervisor.synthesize_response)
 
     graph.set_entry_point("supervisor_route")
@@ -270,8 +350,8 @@ def create_supervisor_graph(
     )
     graph.add_edge(ROUTE_KNOWLEDGE, "compliance_check")
     graph.add_edge(ROUTE_TICKET, "compliance_check")
-    graph.add_edge("compliance_check", "synthesize")
+    graph.add_edge("compliance_check", "compliance_gate")
+    graph.add_edge("compliance_gate", "synthesize")
     graph.add_edge("synthesize", END)
 
-    checkpointer = _build_checkpointer(settings) if enable_checkpointing else None
     return graph.compile(checkpointer=checkpointer)

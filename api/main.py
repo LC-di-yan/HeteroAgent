@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - 注入模块尚未就绪时显式告警
     logger.warning("security.injection 未就绪，注入前置检测不可用")
 
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 SEED_KB: list[tuple[str, str]] = [
     ("我们的理财产品A年化收益率为3.5%-5.2%，投资期限为6个月至3年，最低投资金额10000元。注意：理财非存款，产品有风险，投资须谨慎。", "product_faq.md"),
@@ -225,7 +225,10 @@ def create_app(
                     llm=app.state.llm,
                     long_term_memory=app.state.ltm,
                     settings=st,
+                    approval_store=app.state.approvals,
                 )
+                # 图内 HITL 需要 checkpointer 才能中断/恢复
+                app.state.hitl_enabled = getattr(app.state.graph, "checkpointer", None) is not None
             except Exception as exc:
                 logger.error("编排图构建失败: %s", exc)
 
@@ -260,11 +263,20 @@ def create_app(
     )
     app.state.settings = st
     app.state.graph = graph
+    # 注入的图若带 checkpointer，则支持图内 interrupt/恢复
+    app.state.hitl_enabled = bool(graph is not None and getattr(graph, "checkpointer", None) is not None)
     app.state.llm = llm
     app.state.stm = short_term_memory or _build_default_stm(st)
     app.state.ltm = long_term_memory
     app.state.approvals = approvals or create_approval_store(st)
     app.state.metrics = AgentMetrics()
+    if mcp_server is None:
+        try:
+            from tooling.client import ToolGateway
+
+            mcp_server = ToolGateway.create_default()
+        except Exception as exc:  # 工具服务不可用时不影响主链路
+            logger.warning("工具网关初始化失败: %s", exc)
     app.state.mcp = mcp_server
     app.state.limiter = RateLimiter(per_minute=st.rate_limit_per_minute)
     app.state.eval_lock = asyncio.Lock()
@@ -383,7 +395,20 @@ def create_app(
         except Exception as exc:
             logger.exception("graph 执行失败 trace_id=%s", trace_id)
             raise HTTPException(status_code=502, detail=f"处理失败: {type(exc).__name__}") from exc
-        return {"result": result, "session_id": session_id, "trace_id": trace_id}
+
+        interrupted = "__interrupt__" in result
+        approval_id = None
+        if interrupted:
+            pending = result.get("__interrupt__") or []
+            value = getattr(pending[0], "value", {}) if pending else {}
+            approval_id = value.get("approval_id") if isinstance(value, dict) else None
+        return {
+            "result": result,
+            "session_id": session_id,
+            "trace_id": trace_id,
+            "interrupted": interrupted,
+            "approval_id": approval_id,
+        }
 
     async def _handle_compliance_failure(
         result: dict[str, Any], session_id: str, trace_id: str, user_id: str, message: str
@@ -424,6 +449,20 @@ def create_app(
     async def chat(request: ChatRequest, principal: str = Depends(limited)):
         run = await _run_chat(request.message, request.user_id, request.session_id)
         result = run["result"]
+        if run.get("interrupted"):
+            notice = (
+                "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
+                f"审批编号：{run['approval_id']}。人工确认后我们会尽快回复您。"
+            )
+            await app.state.stm.add_message(run["session_id"], "assistant", notice)
+            return ChatResponse(
+                response=notice,
+                session_id=run["session_id"],
+                intent=str(result.get("intent", "unknown")),
+                compliance_passed=False,
+                approval_id=run["approval_id"],
+                trace_id=run["trace_id"],
+            )
         if not result.get("compliance_passed", True):
             return await _handle_compliance_failure(
                 result, run["session_id"], run["trace_id"], request.user_id, request.message
@@ -449,7 +488,20 @@ def create_app(
             run = await _run_chat(message, user_id, session_id)
             result = run["result"]
             yield f"data: {json.dumps({'type': 'stage', 'node': 'synthesize', 'label': _STAGE_LABELS['synthesize']}, ensure_ascii=False)}\n\n"
-            if not result.get("compliance_passed", True):
+            if run.get("interrupted"):
+                notice = (
+                    "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
+                    f"审批编号：{run['approval_id']}。人工确认后我们会尽快回复您。"
+                )
+                await app.state.stm.add_message(run["session_id"], "assistant", notice)
+                payload = {
+                    "type": "response",
+                    "response": notice,
+                    "intent": str(result.get("intent", "unknown")),
+                    "compliance_passed": False,
+                    "approval_id": run["approval_id"],
+                }
+            elif not result.get("compliance_passed", True):
                 chat_response = await _handle_compliance_failure(
                     result, run["session_id"], run["trace_id"], user_id, message
                 )
@@ -534,6 +586,33 @@ def create_app(
             raise HTTPException(status_code=404, detail="审批单不存在或已过期")
         return rec.to_dict()
 
+    async def _resume_or_fallback(rec, decision: str, body: DecisionRequest, principal: str) -> str:
+        """优先恢复图内 interrupt（真 HITL）；不可用时回退为清洗后文本。"""
+        if getattr(app.state, "hitl_enabled", False) and app.state.graph is not None:
+            from langgraph.types import Command
+
+            thread_id = f"{rec.tenant_id}:{rec.session_id}"[:255]
+            try:
+                resumed = await app.state.graph.ainvoke(
+                    Command(resume={
+                        "approved": decision == "approved",
+                        "actor": principal,
+                        "reason": body.reason or "",
+                    }),
+                    config={"configurable": {"thread_id": thread_id}},
+                )
+                final = resumed.get("final_response") if isinstance(resumed, dict) else None
+                if final:
+                    return final
+            except Exception as exc:  # 线程已不存在 / 检查点丢失 / 无 checkpointer
+                logger.warning("恢复图执行失败，回退为文本合成: %s", exc)
+
+        if decision == "approved":
+            joined = "\n\n".join(v for v in rec.agent_responses.values() if v)
+            safe = _sanitize_for_release(joined)
+            return f"✅ [人工审批通过] {safe}" if safe else "您的请求已由人工审核通过，客服人员将尽快处理。"
+        return "❌ 您的请求经人工审核未通过。如有疑问，请联系人工客服。"
+
     async def _decide(approval_id: str, decision: str, body: DecisionRequest, principal: str) -> dict[str, Any]:
         try:
             rec, audit_row = await app.state.approvals.decide(approval_id, decision, principal, body.reason)
@@ -542,12 +621,7 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
 
-        if decision == "approved":
-            joined = "\n\n".join(v for v in rec.agent_responses.values() if v)
-            safe = _sanitize_for_release(joined)
-            response_text = f"✅ [人工审批通过] {safe}" if safe else "您的请求已由人工审核通过，客服人员将尽快处理。"
-        else:
-            response_text = "❌ 您的请求经人工审核未通过。如有疑问，请联系人工客服。"
+        response_text = await _resume_or_fallback(rec, decision, body, principal)
         await app.state.stm.add_message(rec.session_id, "assistant", response_text)
         return {
             "status": decision,
@@ -616,19 +690,14 @@ def create_app(
     if st.enable_debug_tool_endpoints and app.state.mcp is not None:
         @app.get("/api/tools")
         async def list_tools(principal: str = Depends(auth)):
-            return {"tools": app.state.mcp.list_tools()}
+            tools = await app.state.mcp.list_tools()
+            return {"tools": tools}
 
         @app.post("/api/tools/call")
         async def call_tool(request: dict, principal: str = Depends(auth)):
-            result = await app.state.mcp.call_tool(
+            return await app.state.mcp.call_tool(
                 name=request.get("name", ""), arguments=request.get("arguments", {})
             )
-            return {
-                "success": result.success,
-                "result": result.result,
-                "error": result.error,
-                "duration_ms": result.duration_ms,
-            }
 
     # ── 前端 ──
 

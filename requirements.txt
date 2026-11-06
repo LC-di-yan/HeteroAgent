@@ -10,7 +10,7 @@
 #   * 可选后端 pymilvus / sentence-transformers → pyproject [project.optional-dependencies]
 #   * 开发工具 pytest / pytest-asyncio / pytest-cov / fakeredis / ruff → pyproject [dependency-groups].dev
 #   * langchain-community、langsmith：已从必装项移除（无代码引用；追踪上报走 OTLP）
-#   * mcp：仓库根目录自带 mcp/ 本地包，列 PyPI mcp 会与之互相遮蔽，故不装
+#   * mcp：本地 mcp/ 已改名为 tooling/（消除遮蔽），官方 SDK 现为必装依赖
 # ══════════════════════════════════════════════════════════════════════
 
 # ── Web 层 ──
@@ -41,6 +41,9 @@ httpx>=0.28.1,<1
 
 # ── 环境变量装载 ──
 python-dotenv>=1.0.1,<2
+
+# ── 工具协议（官方 MCP SDK）──
+mcp>=1.27.2,<3
 
 # ── 全链路追踪 ──
 opentelemetry-api>=1.42.1,<2
