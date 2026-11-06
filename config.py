@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # ── 应用 ──
     app_name: str = "heteroagent"
+    # 离线演示模式：用脚本化假模型 + 关键字知识库跑通全链路（无需 API Key）
+    # 生产必须保持 false；开启时启动日志会告警
+    demo_mode: bool = False
     host: str = "127.0.0.1"
     port: int = 8000
     debug: bool = False

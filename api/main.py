@@ -163,6 +163,12 @@ def _sanitize_for_release(text: str) -> str:
 
 
 def build_chat_llm(settings: Settings):
+    if settings.demo_mode:
+        from agents.demo_mode import ScriptedChatModel
+
+        logger.warning("DEMO_MODE 已启用：使用脚本化假模型，仅用于演示，不可用于生产")
+        return ScriptedChatModel()
+
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
@@ -188,6 +194,11 @@ def _build_default_stm(settings: Settings):
 
 
 def _build_default_ltm(settings: Settings):
+    if settings.demo_mode:
+        from agents.demo_mode import DemoKnowledgeBase
+
+        return DemoKnowledgeBase()
+
     from memory.long_term import create_vector_store
 
     try:

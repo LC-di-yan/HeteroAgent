@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-259%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-265%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -100,7 +100,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
   -d "{\"message\":\"理财产品A的收益率是多少？\",\"user_id\":\"u1\"}"
 ```
 
-> 无 API Key 时服务仍可启动（`/health/live` 200），但 `/health/ready` 返回 503、`/api/chat` 明确报错——**不会**伪装成可用。
+> **想立刻看到效果？** 无需 API Key：
+> ```bash
+> DEMO_MODE=true python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+> ```
+> 演示模式用脚本化假模型 + 关键字知识库跑通「路由 → 检索 → 合规 → 聚合 → 人工审批」全链路，
+> 启动日志会打警告；生产必须保持 `DEMO_MODE=false`。
+>
+> 未开启演示且无 API Key 时，服务仍可启动（`/health/live` 200），但 `/health/ready` 返回 503、`/api/chat` 明确报错——**不会**伪装成可用。
 
 浏览器打开 <http://127.0.0.1:8000/> 使用聊天界面，<http://127.0.0.1:8000/docs> 查看 OpenAPI。
 
@@ -154,7 +161,8 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 │   ├── knowledge_rag.py     # 改写 → 检索 → 重排 → 生成 → 自检
 │   ├── ticket_handler.py    # 工单（解析失败不产生副作用）
 │   ├── compliance_checker.py# 规则 + LLM 两阶段审查（fail-closed）
-│   └── react_agent.py       # create_agent 工具调用工厂（P1）
+│   ├── react_agent.py       # create_agent 工具调用工厂
+│   └── demo_mode.py         # 离线演示：脚本化模型 + 关键字知识库
 ├── security/
 │   ├── injection.py         # 注入检测（归一化对抗绕过）
 │   ├── guardrail.py         # 护栏链（规则 + 可插拔模型分类器）
@@ -166,14 +174,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 259 项离线测试
+├── tests/                   # 265 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 259 passed（全部离线，无需 API Key）
+python -m pytest -q          # 265 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 

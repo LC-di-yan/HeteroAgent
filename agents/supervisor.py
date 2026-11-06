@@ -368,7 +368,8 @@ def create_supervisor_graph(
         llm, long_term_memory, settings=settings, context_store=context_store
     )
     tools = None
-    if getattr(settings, "tool_calling_enabled", True):
+    # 演示模式不绑定工具：脚本化模型不实现 bind_tools，避免 create_agent 重试后返回错误文案
+    if getattr(settings, "tool_calling_enabled", True) and not getattr(settings, "demo_mode", False):
         try:
             from agents.toolset import build_tools
 
