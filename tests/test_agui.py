@@ -1,8 +1,6 @@
 """AG-UI 事件编码测试（T-P2-06）。"""
 from __future__ import annotations
 
-import json
-
 from fastapi.testclient import TestClient
 
 from api.main import create_app
