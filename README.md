@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-193%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-204%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -45,7 +45,7 @@
 | 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；哈希链审计 |
 | 记忆 | Redis 短期记忆（tiktoken 预算）+ 有界 LRU embedding 缓存；长期知识库去重与原子落盘 |
 | 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95 指标、成本累计 |
-| 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集（漏放率 / 误杀率 / 脱敏准确率） |
+| 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集（漏放/误杀/脱敏）+ 30 条路由标注集；`python -m evaluation.run` 统一门禁（非 0 退出码） |
 
 ## 架构
 
@@ -157,14 +157,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器 + 38 条版本化数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 193 项离线测试
+├── tests/                   # 204 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 193 passed（全部离线，无需 API Key）
+python -m pytest -q          # 204 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 

@@ -17,7 +17,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := install
 
-.PHONY: install run dev test lint format cov docker-build compose-up compose-down eval
+.PHONY: install run dev test lint format cov docker-build compose-up compose-down eval eval-all route-eval
 
 # 安装运行时依赖 + 开发工具（比 CI 多装 pytest-cov，供 cov 目标使用）
 # 等价命令：python -m pip install -r requirements.txt pytest pytest-asyncio pytest-cov ruff
@@ -71,6 +71,17 @@ compose-down:
 	$(COMPOSE) down
 
 # RAG 离线评估（默认 --no-llm 不调判分模型，检索指标照常产出）
-# 等价命令：python -m evaluation.evaluator --no-llm ；要 LLM 判分：先配 OPENAI_API_KEY 再去掉 --no-llm
+# 统一门禁（路由 + 合规），退出码非 0 表示低于阈值
+# 等价命令：python -m evaluation.run
 eval:
-	$(PY) -m evaluation.evaluator --no-llm
+	$(PY) -m evaluation.run
+
+# 追加检索维度（需要可用的 embedding 凭据与向量库）
+# 等价命令：python -m evaluation.run --with-retrieval --json --out report.json
+eval-all:
+	$(PY) -m evaluation.run --with-retrieval --json --out report.json
+
+# 只跑路由评估（规则基线），用于快速对比模型路由效果
+# 等价命令：python -m evaluation.route_eval
+route-eval:
+	$(PY) -m evaluation.route_eval
