@@ -1,0 +1,38 @@
+# ── 密钥与配置 ──
+.env
+.env.local
+*.env
+!.env.example
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── 向量库与数据 ──
+var/
+*.db
+*.sqlite
+vector_store/
+*.faiss
+*.meta.json
+uploads/
+*.log
+
+# ── IDE / 系统 ──
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── Node（如后续添加前端）──
+node_modules/
+dist/
+.next/

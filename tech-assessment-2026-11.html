@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>HeteroAgent 技术代差评估 · 2026-11</title>
+<style>
+:root{
+  --bg:#0a0b10; --bg2:#0e1018; --surface:#12151f; --surface2:#171b27;
+  --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.14);
+  --text:#e8e9f0; --sub:#a5a8ba; --dim:#6f7387;
+  --violet:#a78bfa; --violet-dim:rgba(167,139,250,.12);
+  --mint:#5eead4; --mint-dim:rgba(94,234,212,.10);
+  --rose:#fb7185; --rose-dim:rgba(251,113,133,.11);
+  --amber:#fbbf24; --amber-dim:rgba(251,191,36,.10);
+  --blue:#7dd3fc; --blue-dim:rgba(125,211,252,.10);
+  --mono:ui-monospace,SFMono-Regular,"Cascadia Code",Consolas,"Liberation Mono",monospace;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px;-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.75;letter-spacing:.01em;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:radial-gradient(ellipse 55% 34% at 50% -8%,rgba(167,139,250,.10),transparent 70%)}
+#progress{position:fixed;top:0;left:0;height:2px;width:0;background:var(--violet);z-index:50;transition:width .1s linear}
+.wrap{max-width:880px;margin:0 auto;padding:0 22px 96px}
+
+.topbar{position:sticky;top:0;z-index:40;background:rgba(10,11,16,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:880px;margin:0 auto;padding:11px 22px;display:flex;align-items:center;gap:14px;overflow-x:auto;scrollbar-width:none}
+.topbar-in::-webkit-scrollbar{display:none}
+.brand{font-family:var(--mono);font-size:11px;color:var(--violet);letter-spacing:.12em;white-space:nowrap}
+.topbar nav{display:flex;gap:16px;white-space:nowrap}
+.topbar nav a{color:var(--dim);text-decoration:none;font-size:12px;transition:color .2s}
+.topbar nav a:hover{color:var(--text)}
+
+header.hero{padding:64px 0 34px;border-bottom:1px solid var(--line)}
+.kicker{font-family:var(--mono);font-size:11px;color:var(--violet);letter-spacing:.18em;text-transform:uppercase;margin-bottom:18px}
+h1{font-size:clamp(29px,6.4vw,44px);line-height:1.22;font-weight:600;letter-spacing:-.025em;margin-bottom:16px}
+h1 em{font-style:normal;color:var(--violet)}
+.lede{font-size:16px;color:var(--sub);max-width:680px;line-height:1.8}
+.meta{margin-top:26px;display:flex;flex-wrap:wrap;gap:8px}
+.meta span{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line);padding:4px 10px;border-radius:6px}
+
+.verdict{margin:34px 0 30px;padding:24px 26px;background:var(--surface);border:1px solid var(--line2);border-left:2px solid var(--violet);border-radius:12px}
+.verdict h2{font-size:14px;font-weight:600;color:var(--violet);letter-spacing:.04em;margin-bottom:10px}
+.verdict p{font-size:15px;color:var(--text);line-height:1.85}
+.verdict p+p{margin-top:10px;color:var(--sub);font-size:14px}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:38px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px 14px}
+.stat b{display:block;font-size:26px;font-weight:600;line-height:1.2;letter-spacing:-.02em}
+.stat span{display:block;font-size:11px;color:var(--dim);margin-top:6px;line-height:1.5}
+.stat.a b{color:var(--rose)} .stat.b b{color:var(--amber)} .stat.c b{color:var(--violet)} .stat.d b{color:var(--mint)}
+
+section{padding-top:42px}
+h2.sec{font-size:21px;font-weight:600;letter-spacing:-.015em;margin-bottom:8px;display:flex;align-items:baseline;gap:12px}
+h2.sec .num{font-family:var(--mono);font-size:12px;color:var(--violet);font-weight:400}
+.sec-intro{color:var(--sub);font-size:14px;margin-bottom:22px;max-width:720px}
+h3.sub{font-size:15px;font-weight:600;margin:28px 0 12px;color:var(--text)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:18px 20px;margin-bottom:12px}
+.card.bad{border-left:2px solid var(--rose)}
+.card.warn{border-left:2px solid var(--amber)}
+.card.ok{border-left:2px solid var(--mint)}
+.card.info{border-left:2px solid var(--blue)}
+.card-head{display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap;margin-bottom:10px}
+.card-id{font-family:var(--mono);font-size:11px;color:var(--dim);padding-top:3px;flex-shrink:0}
+.card-title{font-size:15px;font-weight:600;flex:1;min-width:200px;line-height:1.5}
+.tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:3px 8px;border-radius:5px;white-space:nowrap;flex-shrink:0}
+.tag.crit{color:var(--rose);background:var(--rose-dim);border:1px solid rgba(251,113,133,.25)}
+.tag.high{color:var(--amber);background:var(--amber-dim);border:1px solid rgba(251,191,36,.22)}
+.tag.keep{color:var(--mint);background:var(--mint-dim);border:1px solid rgba(94,234,212,.22)}
+.tag.note{color:var(--blue);background:var(--blue-dim);border:1px solid rgba(125,211,252,.22)}
+.row{display:grid;grid-template-columns:74px 1fr;gap:10px;font-size:13.5px;line-height:1.75;margin-top:7px}
+.row .k{color:var(--dim);font-size:12px;padding-top:2px;letter-spacing:.03em}
+.row .v{color:var(--sub)}
+.row .v:only-child{grid-column:1/-1}
+.row .v strong{color:var(--text);font-weight:600}
+.ev{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.8;word-break:break-word}
+code{font-family:var(--mono);font-size:.88em;color:var(--violet);background:var(--violet-dim);padding:1px 5px;border-radius:4px;word-break:break-word}
+.ref{font-family:var(--mono);font-size:10px;color:var(--violet);text-decoration:none;vertical-align:super;padding:0 1px}
+.ref:hover{text-decoration:underline}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px;margin:18px 0 26px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:13px}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.65}
+th{background:var(--surface2);color:var(--dim);font-size:11px;font-weight:600;letter-spacing:.06em;white-space:nowrap}
+td{color:var(--sub)} td:first-child{color:var(--text);font-weight:500}
+tr:last-child td{border-bottom:none}
+.st{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.st.r{color:var(--rose);background:var(--rose-dim)} .st.a{color:var(--amber);background:var(--amber-dim)} .st.g{color:var(--mint);background:var(--mint-dim)}
+
+.road{display:grid;gap:10px;margin-top:18px}
+.phase{display:grid;grid-template-columns:64px 1fr;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:16px 18px}
+.phase .p{font-family:var(--mono);font-size:13px;font-weight:600;padding-top:2px}
+.phase.p0 .p{color:var(--rose)} .phase.p1 .p{color:var(--amber)} .phase.p2 .p{color:var(--violet)} .phase.p3 .p{color:var(--mint)}
+.phase h4{font-size:14px;font-weight:600;margin-bottom:7px}
+.phase ul{list-style:none;display:flex;flex-wrap:wrap;gap:6px 8px}
+.phase li{font-size:12px;color:var(--sub);background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:3px 9px}
+
+blockquote{margin:16px 0;padding:14px 18px;background:var(--blue-dim);border-left:2px solid var(--blue);border-radius:0 8px 8px 0;color:var(--sub);font-size:13.5px;line-height:1.8}
+blockquote strong{color:var(--text)}
+
+.src{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:6px 20px;margin-top:14px}
+.src ol{list-style:none;counter-reset:s}
+.src li{counter-increment:s;position:relative;padding:12px 0 12px 32px;border-bottom:1px solid var(--line);font-size:13px;color:var(--sub);line-height:1.7;word-break:break-word}
+.src li:last-child{border-bottom:none}
+.src li::before{content:"[" counter(s) "]";position:absolute;left:0;top:12px;font-family:var(--mono);font-size:11px;color:var(--violet)}
+.src a{color:var(--blue);text-decoration:none;border-bottom:1px solid rgba(125,211,252,.3)}
+.src a:hover{border-bottom-color:var(--blue)}
+.conf{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:4px;margin-right:6px}
+.conf.h{color:var(--mint);background:var(--mint-dim)} .conf.m{color:var(--amber);background:var(--amber-dim)}
+
+footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);font-size:12px;line-height:1.9}
+.note{font-size:12.5px;color:var(--dim);margin-top:10px;line-height:1.8}
+
+@media(max-width:640px){
+  .wrap{padding:0 16px 72px} .topbar-in{padding:10px 16px}
+  header.hero{padding:44px 0 26px} .lede{font-size:15px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .card{padding:16px} .row{grid-template-columns:1fr;gap:2px} .row .k{padding-top:0}
+  .phase{grid-template-columns:1fr;gap:6px} .verdict{padding:19px 18px}
+}
+@media print{
+  :root{--bg:#fff;--bg2:#fff;--surface:#fff;--surface2:#f4f4f6;--line:#ddd;--line2:#ccc;--text:#111;--sub:#333;--dim:#666}
+  body::before,.topbar,#progress{display:none} .card,.verdict,.stat,.phase{break-inside:avoid}
+  code{background:#f2f0fa;color:#4c1d95} a{color:#1d4ed8}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div class="topbar"><div class="topbar-in">
+  <span class="brand">HETEROAGENT / REVIEW</span>
+  <nav>
+    <a href="#summary">结论</a><a href="#overview">总览</a><a href="#arch">架构</a><a href="#model">模型</a>
+    <a href="#mcp">工具协议</a><a href="#rag">记忆检索</a><a href="#obs">可观测</a><a href="#eng">工程</a>
+    <a href="#defects">缺陷</a><a href="#keep">保留</a><a href="#road">路线图</a><a href="#sources">来源</a>
+  </nav>
+</div></div>
+
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Technical debt review · 2026.11</div>
+  <h1>哪些技术<em>已经落后了</em><br>HeteroAgent 全面技术评估</h1>
+  <p class="lede">以 2026 年 11 月的 Agent 工程基准，逐层核验本项目的架构、编排、模型接入、工具协议、记忆检索、可观测性与交付链路；区分「技术代差」与「实现缺陷」，并给出可执行的替换顺序。</p>
+  <div class="meta">
+    <span>评审日期 2026-11-06</span><span>方法 静态代码审阅</span><span>范围 26 个文件 / 约 4.3k 行</span>
+    <span>基准 官方规范与发布说明</span><span>未执行运行时验证</span>
+  </div>
+</header>
+
+<div class="verdict" id="summary">
+  <h2>核心结论</h2>
+  <p>这个项目是一份保存完好的 <strong>2024 年末至 2025 年初 Agent 工程范式样本</strong>。分层架构、Supervisor 编排、混合检索、两阶段合规、超时重试与熔断等设计判断在 2026 年依然成立；真正落后的是<strong>实现手段</strong>：框架停留在 0.x 并手工重造了 1.x 已内置的能力，模型接入停留在 Chat Completions 与自由文本 JSON，MCP 是自造的 JSON-RPC 且与现行规范不兼容，语义检索因伪向量而实质失效。</p>
+  <p>更需要注意的是：有 4 项属于「规范级不兼容」（升级不是优化，是合规对齐），另有 9 处实现缺陷会造成错误路由、绕过防护或审计失效，其业务风险高于单纯的版本落后。建议先修缺陷、再升框架与协议、最后补可观测与评估闭环。<strong>不建议</strong>把强合规客服场景改成完全自主的多 Agent——可预测性在这里比自治度更有价值。</p>
+</div>
+
+<div class="stats">
+  <div class="stat a"><b>6</b><span>存在代差的技术域</span></div>
+  <div class="stat b"><b>4</b><span>规范级不兼容项</span></div>
+  <div class="stat c"><b>9</b><span>高优先级实现缺陷</span></div>
+  <div class="stat d"><b>5</b><span>仍值得保留的设计</span></div>
+</div>
+
+<section id="overview">
+  <h2 class="sec"><span class="num">00</span>代差总览</h2>
+  <p class="sec-intro">下表按「项目现状 → 2026 基准 → 判定」给出全局视图。判定为「替换」的条目在后续各章展开证据与影响。</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>技术域</th><th>项目现状</th><th>2026 基准</th><th>判定</th></tr></thead>
+    <tbody>
+      <tr><td>编排框架</td><td>langgraph ≥0.3.0，手写超时/重试/HITL/聚合</td><td>LangChain / LangGraph 1.x：create_agent、middleware、持久化检查点、interrupt 恢复<a class="ref" href="#s2">[2]</a><a class="ref" href="#s3">[3]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>模型接入</td><td>ChatOpenAI（Chat Completions）+ 默认 gpt-4o</td><td>Responses API 保留推理项；GPT-5 代模型；Chat Completions 不再获得新 Agent 能力<a class="ref" href="#s4">[4]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>结构化输出</td><td>提示词求 JSON + json.loads，失败静默兜底</td><td>Structured Outputs / response_format，主循环内生成且零额外调用<a class="ref" href="#s2">[2]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>工具协议</td><td>自造 JSON-RPC：tools/list、tools/call、ping</td><td>MCP 2026-07-28：无状态核心、server/discover、CIMD 授权、Streamable HTTP；ping 已移除<a class="ref" href="#s1">[1]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>跨 Agent / 前端协议</td><td>进程内函数调用 + 自造 SSE 阶段事件</td><td>A2A 1.0（跨组织）、AG-UI（状态与审批事件流）<a class="ref" href="#s6">[6]</a><a class="ref" href="#s7">[7]</a></td><td><span class="st a">按需引入</span></td></tr>
+      <tr><td>向量与检索</td><td>FAISS IndexFlatIP + hash 随机伪向量；BM25 + RRF</td><td>真实 embedding + 混合检索 + 神经重排；混合与 RRF 本身仍主流<a class="ref" href="#s8">[8]</a></td><td><span class="st a">部分替换</span></td></tr>
+      <tr><td>记忆模型</td><td>进程内存 / Redis / FAISS 三层介质</td><td>按 user / agent / session / org 分域，事实抽取与冲突消解，可跨会话检索<a class="ref" href="#s8">[8]</a></td><td><span class="st a">重构</span></td></tr>
+      <tr><td>可观测性</td><td>手写 agent.* span + 进程内计数器</td><td>OTel GenAI 语义约定 gen_ai.*，token / 成本 / 模型归因，自动插桩<a class="ref" href="#s5">[5]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>评估</td><td>4 条硬编码 Golden Set，GET 触发</td><td>trajectory / tool-call 评估、数据集版本、CI 回归门禁、trace→eval 闭环<a class="ref" href="#s7">[7]</a></td><td><span class="st r">替换</span></td></tr>
+      <tr><td>依赖与交付</td><td>requirements.txt 全 &gt;=、无锁、无测试、单阶段 Docker、root</td><td>pyproject.toml + uv.lock + Ruff/类型检查 + 多阶段构建 + 非 root<a class="ref" href="#s7">[7]</a></td><td><span class="st a">工程补齐</span></td></tr>
+      <tr><td>API 基座</td><td>FastAPI + Pydantic v2 + lifespan</td><td>仍是主流组合</td><td><span class="st g">保留</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">判定原则：<span class="st r">替换</span> = 现行规范或主流实践已不兼容 / 手搓成本高于迁移；<span class="st a">部分替换/按需</span> = 方向正确但实现需现代化，或仅在特定规模下才有收益；<span class="st g">保留</span> = 设计判断仍成立。</p>
+</section>
+
+<section id="arch">
+  <h2 class="sec"><span class="num">01</span>架构与编排层</h2>
+  <p class="sec-intro">整体采用「API → Supervisor StateGraph → 子 Agent → 强制合规 → 聚合」的固定 DAG。这个结构本身适合金融客服；落后的是实现方式，以及多处设计与代码脱节。</p>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">A1</span><span class="card-title">停留在 LangGraph 0.x，手工重造了 1.x 的内置能力</span><span class="tag crit">规范级</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">依赖声明为 <code>langgraph&gt;=0.3.0</code>；使用 <code>set_entry_point</code>、<code>MemorySaver</code>；超时、指数退避重试、降级回复、对话摘要、PII 处理、HITL 全部自行实现。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">LangChain 1.x 以 <code>create_agent</code> 为标准入口，提供 <code>SummarizationMiddleware</code>、<code>PIIMiddleware</code>、<code>HumanInTheLoopMiddleware</code> 与 before/after/wrap 钩子；结构化输出并入主循环，durable execution 支持故障后从最后一步恢复。<a class="ref" href="#s2">[2]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">约 200 行编排胶水代码成为长期维护负担，且缺少 time travel、状态回溯、中间件组合等能力；升级后这部分可以直接删除。</div></div>
+    <div class="ev">requirements.txt:1-5 · agents/supervisor.py:96-146, 267-290, 349-377 · api/main.py:97-117</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">A2</span><span class="card-title">「Human-in-the-Loop」实为进程内字典，不是可恢复的中断</span><span class="tag crit">规范级</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">合规未通过时把请求塞进全局 <code>pending_reviews: dict</code>，再由 <code>/api/review/{id}/approve|reject</code> 弹出；图中 <code>MemorySaver</code> 只存于 RAM，重启即丢。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">LangGraph 用 <code>interrupt()</code> 暂停 + <code>Command(resume=...)</code> 恢复，配合 <code>PostgresSaver</code> / <code>SqliteSaver</code> 持久化；官方文档明确指出 <code>MemorySaver</code> 不跨重启，且长会话检查点需定期裁剪。<a class="ref" href="#s3">[3]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">审批状态不可靠、多副本不共享、重启后待审请求消失，审批动作无身份校验与审计留痕——对金融合规场景是实质性缺陷。另外 <code>thread_id=session_id</code> 会让检查点无限累积。</div></div>
+    <div class="ev">api/main.py:30-33, 231-263, 416-499 · agents/supervisor.py:222(配置), 374-375</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">A3</span><span class="card-title">多 Agent 只是条件路由，模型不产生工具调用</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">Supervisor 用一次 LLM 调用输出一个字符串意图，映射到固定的三个节点；子 Agent 内部再各自调用 LLM。工具层与图完全解耦：<code>TicketHandlerAgent</code> 直接操作内存 <code>TicketStore</code>，MCP 工具仅通过 REST 暴露。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">2026 年主流是具备 tool_calls 的 Agent 循环 + 上下文工程（动态提示、历史压缩、选择性工具暴露），工具 schema 由宿主执行并统一记录。</div></div>
+    <div class="row"><div class="k">影响</div><div class="v">无法多步推理、无法按结果自主选择下一步工具；README 与前端宣称的 MCP 工具链在请求链路中并不存在。</div></div>
+    <div class="ev">agents/supervisor.py:295-303, 349-372 · agents/ticket_handler.py:69-110, 204-229 · mcp/mcp_server.py:258-352</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">A4</span><span class="card-title">缺少协议层：跨 Agent 协作与前端事件均为私有约定</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">无 Agent Card / 任务委派；<code>/api/chat/stream</code> 仅推送自造的 <code>stage</code> 标签（不推 token、工具调用、状态增量或审批请求），前端手写 <code>fetch</code> + SSE 分行解析。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">A2A 1.0 已于 2026 年 4 月发布稳定版（签名 Agent Card、多租户）；AG-UI 标准化了 Agent 状态、工具事件与人工审批向前端的流式契约。<a class="ref" href="#s6">[6]</a><a class="ref" href="#s7">[7]</a></div></div>
+    <div class="row"><div class="k">判断</div><div class="v"><strong>并非必须现在引入</strong>：同进程内的 Agent 协作用函数调用更简单；A2A 只有在跨团队 / 跨组织调用时才有收益。AG-UI 则建议在重做前端时一并采纳，可省去自造事件协议。</div></div>
+    <div class="ev">api/main.py:286-353 · static/index.html:651-697</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">A5</span><span class="card-title">IntentRouterAgent 是死代码，文档与实现脱节</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>IntentRouterAgent</code> 在 <code>create_supervisor_graph</code> 中被实例化，但从未 <code>add_node</code>；README 描述的多级意图分类、置信度、实体抽取、金融特殊规则均不生效。实际路由完全依赖 Supervisor 的一段自由文本提示词。</div></div>
+    <div class="row"><div class="k">影响</div><div class="v">以 README 为准做二次开发会走错方向；所谓「异构多 Agent」的意图层实际只有一个字符串比较。</div></div>
+    <div class="ev">agents/supervisor.py:344 · agents/intent_router.py:64-122 · README.md:331-336</div>
+  </div>
+</section>
+
+<section id="model">
+  <h2 class="sec"><span class="num">02</span>模型接入与上下文工程</h2>
+  <p class="sec-intro">这是代差最集中、迁移收益最直接的一层：同样的业务逻辑，换接口与结构化输出可同时提升可靠性、降低延迟与成本。</p>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">B1</span><span class="card-title">Chat Completions + gpt-4o 属于上一代接入方式</span><span class="tag crit">规范级</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">全局使用 <code>ChatOpenAI</code>（Chat Completions），<code>.env.example</code> 与代码默认模型均为 <code>gpt-4o</code>；无推理模型参数、无模型分级、无 fallback 供应商。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">OpenAI 官方建议新项目迁移到 <strong>Responses API</strong>：跨回合保留加密推理项、内置工具、缓存利用率更高；并明确 Chat Completions 不会获得新的 Agent 能力。GPT-4o 已于 2026-02-13 在 ChatGPT 端退役（API 仍可用但属旧代），当前旗舰为 GPT-5 世代。<a class="ref" href="#s4">[4]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">无法使用 reasoning items、服务端托管工具与更好的前缀缓存；长会话里反复重传历史的成本显著高于新接口。模型代际也直接影响工具调用与指令遵循的可靠性。</div></div>
+    <div class="ev">.env.example:4 · api/main.py:404 · agents/supervisor.py:335-338 · evaluation/evaluator.py:199</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">B2</span><span class="card-title">用提示词求 JSON、用 json.loads 解析，失败即静默降级</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">意图识别、工单分析、合规审查、LLM 重排都要求模型「请以 JSON 格式返回」，随后直接 <code>json.loads(response.content)</code>；解析失败时分别回落到 <code>knowledge_rag</code>、<strong>直接创建工单</strong>、<code>passed=True</code>。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">Structured Outputs 由服务端保证 schema 合规；LangChain 1.x 的 <code>response_format</code> / <code>with_structured_output</code> 在主循环内生成，不再额外调用一次模型。<a class="ref" href="#s2">[2]</a><a class="ref" href="#s4">[4]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">在金融客服里，一次解析失败可能产生「自动创建工单」这类有副作用的错误动作；合规审查解析失败默认放行，属于安全兜底方向错误。</div></div>
+    <div class="ev">agents/intent_router.py:78-98 · agents/ticket_handler.py:140-151 · agents/compliance_checker.py:188-194 · agents/knowledge_rag.py:153-159</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">B3</span><span class="card-title">无函数/工具调用能力，工具调用靠自然语言猜测</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">模型从不输出 <code>tool_calls</code>；工单动作由正则匹配工单号或 JSON 文本决定，MCP 工具不由模型发现或选择。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">工具 schema 交给模型、由宿主执行并回填结果，是 2026 年 Agent 的基本形态；MCP 官方规范还要求 tools/list 返回确定性顺序以稳定提示词缓存。<a class="ref" href="#s1">[1]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">扩展工具需要改提示词与解析分支，无法复用生态中的 MCP 客户端，也无法对「模型选错工具」做统一评测。</div></div>
+    <div class="ev">agents/ticket_handler.py:112-151 · mcp/mcp_server.py:128-143, 205-242</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">B4</span><span class="card-title">缓存与成本策略是硬编码早退，而非工程化手段</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>FAQ_KNOWLEDGE</code> 硬编码 4 条答案走「精确子串早退」；<code>_ROUTE_CACHE</code> 按消息归一化前 50 字符做<strong>全局跨用户</strong>意图缓存；无 prompt caching、无语义缓存、无模型分级、无成本上限。token 估算使用 <code>len(text)/1.8</code>，而 <code>requirements.txt</code> 已声明 <code>tiktoken</code> 却从未使用；短期记忆另有一套 <code>len//2</code> 估算。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">2026 年提示词前缀缓存已是默认成本杠杆（配合 Responses API 的推理项复用），上下文压缩由中间件完成；缓存键需含 user / tenant 作用域。</div></div>
+    <div class="row"><div class="k">影响</div><div class="v">FAQ 答案与知识库双份维护、易漂移；全局路由缓存存在跨用户错路由与信息泄露风险；两套 token 估算使预算控制不可信。</div></div>
+    <div class="ev">agents/supervisor.py:32-62, 207-235 · api/main.py:36-48 · memory/short_term.py:102-117 · requirements.txt:18</div>
+  </div>
+
+  <div class="card info">
+    <div class="card-head"><span class="card-id">B5</span><span class="card-title">流式输出只推阶段，不推内容</span><span class="tag note">体验</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>graph.astream(stream_mode="updates")</code> 每个节点只发一条进度标签；最终回复在 <code>synthesize</code> 节点一次性整段返回。前端显示打字动画但并无 token 流。</div></div>
+    <div class="row"><div class="k">建议</div><div class="v">改用 token 级流 + 结构化事件（工具开始/结束、状态增量、审批请求），与 AG-UI 事件模型对齐；首字延迟体验会有量级差异。</div></div>
+    <div class="ev">api/main.py:286-353 · static/index.html:676-682</div>
+  </div>
+</section>
+
+<section id="mcp">
+  <h2 class="sec"><span class="num">03</span>工具协议层：最硬的规范级不兼容</h2>
+  <p class="sec-intro">项目自称「遵循 Anthropic MCP 标准」，但实现是一个进程内的自造 JSON-RPC 分发器。它既不符合旧版规范，也与 2026-07-28 现行规范全面不兼容。</p>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">C1</span><span class="card-title">自造 JSON-RPC，缺失协议全部核心机制</span><span class="tag crit">规范级</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>handle_jsonrpc</code> 仅支持 <code>tools/list</code>、<code>tools/call</code>、<code>ping</code>；无 initialize（旧版）、无 <code>server/discover</code>（新版）、无协议版本协商、无 capabilities、无 transport（stdio / Streamable HTTP）、无 OAuth 2.1 / CIMD、无 resources / prompts、无 <code>ttlMs</code> / <code>cacheScope</code>、无 <code>Mcp-Method</code> / <code>Mcp-Name</code> 头、无 OTel traceparent 传播。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">MCP 现行规范为 <strong>2026-07-28</strong>：无状态核心、移除 initialize 握手与会话 ID、强制 <code>server/discover</code> 声明版本与能力、列表结果可缓存、CIMD 取代 DCR、Tasks / MCP Apps / EMA 成为扩展、旧 HTTP+SSE 传输与 Roots / Sampling / Logging 进入弃用期。<strong>该版本明确移除了 <code>ping</code></strong>，而项目与 README 仍把 ping 列为三大方法之一。<a class="ref" href="#s1">[1]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">任何合规 MCP 客户端都无法发现或连接此服务；生态工具（Inspector、网关、身份体系、缓存层）全部不可用。这不是「版本旧」，而是「不是 MCP」。</div></div>
+    <div class="ev">mcp/mcp_server.py:205-242, 258-352 · README.md:434-449 · requirements.txt:15</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">C2</span><span class="card-title">依赖声明与实现不一致，官方 SDK 已演进到 v2</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>requirements.txt</code> 声明 <code>mcp&gt;=1.0.0</code>、<code>langsmith</code>、<code>langchain-community</code>、<code>tiktoken</code>，代码中一处未用；反过来 <code>sentence_transformers</code>、<code>pymilvus</code> 被代码引用却未声明（依赖 try/except 静默降级）。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">官方 Python SDK v2 已把 <code>FastMCP</code> 更名为 <code>MCPServer</code>，并支持在同一端点同时应答新旧两个协议修订；v1 客户端可平滑过渡。<a class="ref" href="#s7">[7]</a></div></div>
+    <div class="row"><div class="k">建议</div><div class="v">删除自造服务器，改用官方 SDK 暴露工具；<code>/api/tools</code> 与 <code>/api/tools/call</code> 降级为内部调试接口。同时清理未使用依赖、补齐缺失依赖并锁定版本。</div></div>
+    <div class="ev">requirements.txt:4-5, 15, 18 · agents/knowledge_rag.py:70 · memory/long_term.py:418-429</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">C3</span><span class="card-title">工具层无授权边界，且未接入 Agent 链路</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>requires_auth</code> 字段定义后从未校验；<code>/api/tools/call</code> 接受任意 dict 直接调用任意已注册工具；CORS 为 <code>allow_origins=["*"]</code> 且 <code>allow_credentials=True</code>（浏览器会拒绝该组合，配置本身无效且危险）。预置工具返回硬编码假数据。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">MCP 2026-07-28 强化 OAuth 2.1 / 发行方校验与 CIMD；规范同时给出服务端安全清单。OWASP 已于 2026 年发布 MCP Top 10。<a class="ref" href="#s1">[1]</a><a class="ref" href="#s7">[7]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">工具调用面是未设防的远程执行入口；而 Agent 图又完全不消费它，等于同时承担了风险与零收益。</div></div>
+    <div class="ev">mcp/mcp_server.py:23-31, 145-203 · api/main.py:169-175, 369-381</div>
+  </div>
+</section>
+
+<section id="rag">
+  <h2 class="sec"><span class="num">04</span>记忆与检索层</h2>
+  <p class="sec-intro">混合检索（BM25 + 向量 + RRF）的架构判断在 2026 年依然主流，问题集中在 embedding、分块、重排与「记忆」语义四处。</p>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">D1</span><span class="card-title">hash 随机伪向量使语义检索实质失效</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">Embedding API 探测失败后，用 <code>sha256(text)</code> 播种 <code>np.random.randn(1536)</code> 作为向量；因分数普遍偏低，RAG 置信度阈值被下调到 <strong>0.05</strong>，等于取消阈值。</div></div>
+    <div class="row"><div class="k">影响</div><div class="v">向量相似度与语义无关（近乎随机），Hybrid Search 实际只剩 BM25 逐字匹配在起作用；<code>/api/evaluate</code> 给出的 Recall@K / MRR 也失去评估意义。这是全项目最影响效果的一处。</div></div>
+    <div class="row"><div class="k">建议</div><div class="v">把真实 embedding 作为<strong>启动必需条件</strong>（失败即拒绝服务，而非静默降级），或使用本地多语 embedding；随后把阈值恢复到有区分度的量级并用 Golden Set 校准。</div></div>
+    <div class="ev">memory/long_term.py:60-88, 108-149 · agents/knowledge_rag.py:20-24, 266-285</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">D2</span><span class="card-title">FAISS 实现停留在原型级：暴力索引、无生命周期管理</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>IndexFlatIP</code> 全量暴力检索；无元数据过滤、无删除/更新/去重；<code>save()</code> 在 API 层从未调用（重启丢索引）；索引加载失败时重建 index 但保留 <code>_documents</code>，两者可能错位；<code>add_document</code> 不去重，doc_id 由内容哈希生成却可重复插入。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">生产通常使用支持过滤、增量更新与持久化的向量库（pgvector / Qdrant / Milvus），并把索引与元数据置于同一事务边界。</div></div>
+    <div class="row"><div class="k">判断</div><div class="v">知识库规模小的时候影响有限，但「对话摘要无限写入」会让它快速膨胀——见 D3。</div></div>
+    <div class="ev">memory/long_term.py:90-106, 151-179, 243-258, 342-351 · api/main.py:120-159</div>
+  </div>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">D3</span><span class="card-title">「三层记忆」只是存储介质分层，不是 Agent 记忆</span><span class="tag crit">高</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">工作记忆 = 进程 dict，短期记忆 = Redis list，长期记忆 = FAISS 文档。没有用户画像 / 事实抽取 / 时间衰减 / 冲突消解 / 事实版本，也没有 user / agent / session / org 作用域隔离。反而<strong>每轮对话</strong>都把原始用户消息与客服回复截断后写进知识库。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">2026 年记忆是独立架构层：分域作用域、可查询的持久记忆、事实冲突处理，并用 LoCoMo / LongMemEval 等基准评估跨会话召回。<a class="ref" href="#s8">[8]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">知识库被低价值对话原文持续污染（同时把 PII 写进向量库），跨会话「记住用户」并不成立；检索命中历史闲聊的概率随使用时长上升。</div></div>
+    <div class="ev">api/main.py:97-117, 270-274 · memory/working_memory.py · memory/short_term.py · memory/long_term.py:28-44</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">D4</span><span class="card-title">分块与分词未做中文化处理，重排模型选型错配</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">分块按 <strong>512 字符</strong>硬切（注释写 512 tokens，中文实际远超）；BM25 分词用「逐字中文 + 英文串」正则，无中文分词器 / n-gram，且每次检索全量重算 IDF；CrossEncoder 使用英文 <code>ms-marco-MiniLM-L-6-v2</code>，同步 <code>predict()</code> 在 async 函数中阻塞事件循环，依赖未写入 requirements。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">语义/结构感知分块、上下文检索（为每个块预置 LLM 生成的背景前缀）、中文或多语 reranker、异步/线程池执行重排，已是成熟做法。<a class="ref" href="#s8">[8]</a></div></div>
+    <div class="ev">memory/long_term.py:181-239, 373-411 · agents/knowledge_rag.py:55-76, 93-161</div>
+  </div>
+
+  <blockquote><strong>一条反向证据，避免过度升级：</strong>2026 年多项研究（RAW-RAG 等）显示，在 LoCoMo / LongMemEval 上，「保留原始对话 + 强 reranker 的朴素检索」可以胜过复杂的图记忆与事实抽取流水线，且摄入成本相差数十倍；上下文预算紧张时重排收益显著，预算宽裕时收益趋近于零。<a class="ref" href="#s8">[8]</a> 因此本项目的正确动作是「先换真 embedding + 停止污染知识库 + 换中文重排器」，<strong>而不是</strong>立刻引入图记忆或 mem0 之类的复杂框架。这些结论来自二手来源，落地前建议用自己的数据集复核。</blockquote>
+</section>
+
+<section id="obs">
+  <h2 class="sec"><span class="num">05</span>可观测性与评估</h2>
+  <p class="sec-intro">选了 OpenTelemetry 是正确的，但遥测 vocabulary 与评估体系都停留在「能看个大概」的阶段。</p>
+
+  <div class="card bad">
+    <div class="card-head"><span class="card-id">E1</span><span class="card-title">自定义 agent.* span 不符合 GenAI 语义约定</span><span class="tag crit">规范级</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">装饰器只记录 <code>agent.name</code>、<code>agent.duration_ms</code>、<code>agent.success</code>、<code>agent.result_keys</code>；没有模型名、input/output tokens、缓存命中、finish reason、成本、tool span、retrieval span、session.id。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">OTel GenAI 语义约定定义 <code>gen_ai.request.model</code>、<code>gen_ai.usage.input_tokens/output_tokens</code>、<code>invoke_agent</code> / <code>execute_tool</code> / inference span 层级，官方博客已给出可视化与导出实践；自动插桩包可覆盖 OpenAI / LangChain。<a class="ref" href="#s5">[5]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">无法回答「这次请求花了多少 token / 哪个模型 / 哪一步慢」，也无法按会话回放；任何 OTel 兼容后端都无法直接解析这些自定义属性。</div></div>
+    <div class="row"><div class="k">注意</div><div class="v">GenAI 约定在 2026 年仍处 Development / 部分属性 experimental，建议固定插桩包与约定版本，并预期后续属性重命名。<a class="ref" href="#s7">[7]</a></div></div>
+    <div class="ev">tracing/otel_config.py:78-149 · requirements.txt:11-14</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">E2</span><span class="card-title">指标是进程内累加器，评估没有进入交付闭环</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>AgentMetrics</code> 只有调用次数 / 平均耗时 / 错误率，重启清零、多副本不聚合、无分位数；<code>/api/metrics</code> 与 <code>/api/evaluate</code> 均无鉴权。评估集为 4 条硬编码用例，用 <strong>GET</strong> 触发 LLM 调用，只测 Recall@K / MRR / Faithfulness。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">eval-driven 开发：轨迹评估、工具调用正确性、合规误杀率、端到端延迟与成本、版本化数据集、CI 回归门禁，并把评估分数关联回产生该输出的 span。<a class="ref" href="#s7">[7]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">改提示词、换模型、换 embedding 之后没有客观回归信号；当前 Faithfulness 还是「用另一个 LLM 给一个 0~1 数字」，无校准、无一致性检验。</div></div>
+    <div class="ev">tracing/otel_config.py:152-177 · api/main.py:384-408 · evaluation/evaluator.py:37-66, 144-186</div>
+  </div>
+</section>
+
+<section id="eng">
+  <h2 class="sec"><span class="num">06</span>工程化与交付链路</h2>
+  <p class="sec-intro">这一层不决定「智能程度」，但决定能否复现、扩展与上线。当前状态更接近可运行原型。</p>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">F1</span><span class="card-title">依赖不可复现，质量门禁完全缺失</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v"><code>requirements.txt</code> 全部使用 <code>&gt;=</code> 且无上界；没有 <code>pyproject.toml</code>、<code>uv.lock</code>、测试目录、CI 配置、Ruff / mypy 配置（<code>.gitignore</code> 里却预留了它们的缓存目录）。</div></div>
+    <div class="row"><div class="k">基准</div><div class="v">2026 年 Python 项目常规做法：<code>pyproject.toml</code> 为唯一真相源、提交 <code>uv.lock</code>、CI 用 <code>uv sync --locked</code>、Ruff + 类型检查作为门禁、依赖组区分运行时与开发。<a class="ref" href="#s7">[7]</a></div></div>
+    <div class="row"><div class="k">影响</div><div class="v">在 LangChain 0.x → 1.x、MCP v1 → v2 这类破坏性升级面前，<code>&gt;=</code> 会让一次全新安装直接得到不兼容的新版本， silently 破坏构建。</div></div>
+    <div class="ev">requirements.txt:1-19 · .gitignore:7-17</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">F2</span><span class="card-title">全局单例状态使服务无法水平扩展</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">模块级全局：<code>working_memory</code>、<code>short_term_memory</code>、<code>long_term_memory</code>、<code>mcp_server</code>、<code>metrics</code>、<code>pending_reviews</code>、<code>_ROUTE_CACHE</code>、<code>TicketStore</code>、<code>MemorySaver</code> 全在单进程内存；FAISS 索引与工单数据不共享。</div></div>
+    <div class="row"><div class="k">影响</div><div class="v">多 worker / 多副本下，同一会话可能落到不同实例而丢失上下文、审批或工单；<code>thread_id=session_id</code> 又会带来检查点无限增长。</div></div>
+    <div class="ev">api/main.py:33-34, 120-125 · agents/supervisor.py:34, 374 · agents/ticket_handler.py:69-73</div>
+  </div>
+
+  <div class="card warn">
+    <div class="card-head"><span class="card-id">F3</span><span class="card-title">容器与启动配置不具备生产形态</span><span class="tag high">中</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">单阶段 <code>python:3.12-slim</code>、以 root 运行、无 <code>.dockerignore</code>、<code>pip install</code> 无锁与哈希校验；<code>__main__</code> 写死 <code>reload=True</code>、单 worker；<code>/health</code> 只返回静态字符串，未区分 readiness / liveness，也未检查 Redis / embedding 可用性。</div></div>
+    <div class="row"><div class="k">建议</div><div class="v">多阶段构建 + 非 root + 锁文件安装；生产入口用受管 ASGI 进程与多 worker；健康检查覆盖下游依赖。</div></div>
+    <div class="ev">Dockerfile:1-7 · api/main.py:411-413, 515-522</div>
+  </div>
+
+  <div class="card info">
+    <div class="card-head"><span class="card-id">F4</span><span class="card-title">前端为单文件内联页面，与后端契约存在漂移</span><span class="tag note">体验</span></div>
+    <div class="row"><div class="k">现状</div><div class="v">742 行单文件内联 CSS/JS、无组件化与类型、外链 Google Fonts（内网环境通常不可达）、侧栏写「Port 8001」而后端默认 8000、界面使用 emoji 图标；SSE 解析为手写字符串切分。</div></div>
+    <div class="row"><div class="k">判断</div><div class="v">对一个演示原型足够；若要承载人工审批台、轨迹回放与多端一致，建议按 AG-UI 事件契约重写为组件化前端。</div></div>
+    <div class="ev">static/index.html:7-8, 517, 615, 651-697</div>
+  </div>
+</section>
+
+<section id="defects">
+  <h2 class="sec"><span class="num">07</span>横切：9 处实现缺陷（优先于版本升级）</h2>
+  <p class="sec-intro">以下不是「技术代差」，而是静态审阅即可确认的逻辑问题。它们会造成防护绕过或错误业务动作，建议在任何框架升级之前处理。</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>编号</th><th>缺陷</th><th>后果</th><th>证据</th></tr></thead>
+    <tbody>
+      <tr><td>G1</td><td>Prompt 注入检测放在合规节点，位于所有 LLM 调用<strong>之后</strong></td><td>检测到攻击时注入内容已进入模型，防护无意义</td><td>compliance_checker.py:244-261</td></tr>
+      <tr><td>G2</td><td>合规未通过时把所有字符串 sub_results 覆盖成同一段 <code>sanitized_content</code></td><td>回复结构被破坏，多 Agent 结果丢失</td><td>compliance_checker.py:276-279</td></tr>
+      <tr><td>G3</td><td><code>approve</code> 端点直接拼接并返回「Agent 原始回复」，无身份校验、无审批留痕</td><td>被拦截内容可经未授权调用放行，且不可审计</td><td>api/main.py:445-471</td></tr>
+      <tr><td>G4</td><td><code>IntentRouterAgent</code> 实例化但未加入图</td><td>意图识别能力不存在，文档失真</td><td>supervisor.py:344</td></tr>
+      <tr><td>G5</td><td>FAQ 早退把 <code>intent</code> 写成 <code>compliance_checker</code> 并塞入 <code>faq_direct</code></td><td>指标、路由语义与合规流程混乱</td><td>supervisor.py:207-218</td></tr>
+      <tr><td>G6</td><td>路由缓存按文本前 50 字符做全局 key，跨用户共享且无淘汰</td><td>错路由、跨会话信息泄露、内存增长</td><td>supervisor.py:34, 220-257</td></tr>
+      <tr><td>G7</td><td>伪向量 + 阈值 0.05 + <code>/api/evaluate</code> 只看关键词命中</td><td>检索质量与评估结果同时失真</td><td>long_term.py:136-149 · knowledge_rag.py:24</td></tr>
+      <tr><td>G8</td><td>每轮把用户原文与回复写入知识库，且 <code>save()</code> 从未调用</td><td>知识库污染与 PII 入库；重启后索引丢失</td><td>api/main.py:97-117, 270-274</td></tr>
+      <tr><td>G9</td><td>无认证 / 限流 / 输入长度上限；CORS <code>*</code> 与 credentials 组合无效；PII 正则 <code>\d{16,19}</code> 会误判长数字</td><td>接口可被滥用；合规误杀与漏判并存</td><td>api/main.py:169-175 · compliance_checker.py:32-37, 100-136</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">补充观察：合规词的否定前缀判断只回看前 6 个字符；<code>llm_check</code> 解析失败默认 <code>passed=True</code>；工单号正则只接受大写十六进制或 6 位数字，与生成器格式并不完全一致。这些属于边界条件，建议一并纳入测试用例。</p>
+</section>
+
+<section id="keep">
+  <h2 class="sec"><span class="num">08</span>哪些没有落后，应当保留</h2>
+  <p class="sec-intro">客观评估需要区分「方向错」与「手段旧」。以下五项在 2026 年仍然是正确的设计判断，重写时不必推倒。</p>
+  <div class="card ok"><div class="card-head"><span class="card-id">K1</span><span class="card-title">FastAPI + Pydantic v2 + lifespan 异步基座</span><span class="tag keep">保留</span></div><div class="row"><div class="v">仍是 Python Agent 服务的主流组合，无需更换框架。</div></div></div>
+  <div class="card ok"><div class="card-head"><span class="card-id">K2</span><span class="card-title">强合规场景用固定 Supervisor 图</span><span class="tag keep">保留</span></div><div class="row"><div class="v">可预测、可审计、可强制插入审查节点；比完全自主的多 Agent 更适合金融客服。建议保留拓扑，只替换节点内部实现与持久化机制。</div></div></div>
+  <div class="card ok"><div class="card-head"><span class="card-id">K3</span><span class="card-title">规则引擎先行 + LLM 深度审查的两阶段合规</span><span class="tag keep">保留</span></div><div class="row"><div class="v">延迟与覆盖面的取舍合理；对应到 1.x 可用 <code>PIIMiddleware</code> + guardrail 中间件表达，而非放弃分层。</div></div></div>
+  <div class="card ok"><div class="card-head"><span class="card-id">K4</span><span class="card-title">BM25 + 向量 + RRF 混合检索</span><span class="tag keep">保留</span></div><div class="row"><div class="v">2026 年仍是主流检索结构；需要替换的是 embedding、中文分词、分块与重排器，不是融合策略本身。</div></div></div>
+  <div class="card ok"><div class="card-head"><span class="card-id">K5</span><span class="card-title">超时 / 指数退避 / 熔断 / 评估 / 追踪的意识</span><span class="tag keep">保留</span></div><div class="row"><div class="v">这些工程直觉领先于很多同期原型；只是应当从手搓迁移到框架中间件、官方 SDK 与标准遥测约定上。</div></div></div>
+</section>
+
+<section id="road">
+  <h2 class="sec"><span class="num">09</span>升级路线图（按收益 / 风险排序）</h2>
+  <p class="sec-intro">顺序原则：先消除错误行为与数据污染，再做规范对齐，最后做能力扩展。不给出工期估计，因为依赖现有测试与部署条件的确认。</p>
+  <div class="road">
+    <div class="phase p0"><div class="p">P0</div><div><h4>正确性与安全：必须先做</h4><ul>
+      <li>修 G1–G9 九处缺陷</li><li>输入净化前置到入口</li><li>HITL 持久化 + 鉴权 + 审计留痕</li><li>禁用伪向量降级或改快速失败</li><li>停止对话原文写库</li><li>接口鉴权 / 限流 / CORS 收敛</li><li>对齐依赖声明</li><li>补最小回归测试</li>
+    </ul></div></div>
+    <div class="phase p1"><div class="p">P1</div><div><h4>规范级对齐：一次做透</h4><ul>
+      <li>LangChain / LangGraph 1.x + create_agent</li><li>结构化输出替换 json.loads</li><li>Responses API + 当前代模型</li><li>持久 checkpointer（PostgresSaver）</li><li>官方 MCP SDK v2 + server/discover</li><li>Streamable HTTP + 授权边界</li><li>interrupt / Command 恢复</li>
+    </ul></div></div>
+    <div class="phase p2"><div class="p">P2</div><div><h4>能力现代化：可度量之后再投入</h4><ul>
+      <li>GenAI semconv + 自动插桩</li><li>token / 成本 / 会话归因</li><li>中文或多语 reranker</li><li>语义分块 / 上下文检索</li><li>数据集版本 + CI 回归门禁</li><li>trajectory 与工具调用评估</li><li>token 级流 + AG-UI 事件</li><li>pyproject + uv.lock + Ruff</li>
+    </ul></div></div>
+    <div class="phase p3"><div class="p">P3</div><div><h4>按需扩展：不要提前引入</h4><ul>
+      <li>A2A（仅跨团队 / 跨组织协作）</li><li>向量库换 pgvector / Qdrant</li><li>前端组件化审批台</li><li>多副本与水平扩展</li><li>语义缓存与模型分级路由</li>
+    </ul></div></div>
+  </div>
+  <blockquote><strong>一个明确的「不要做」：</strong>在 P0 完成前不要替换向量数据库或引入复杂记忆框架。当前瓶颈是 embedding 为随机向量与知识库被污染，换存储后端不会改善任何指标；2026 年的对照研究也表明，复杂记忆流水线未必优于保留原始证据 + 强重排的朴素方案。<a class="ref" href="#s8">[8]</a></blockquote>
+</section>
+
+<section id="sources">
+  <h2 class="sec"><span class="num">10</span>证据来源与置信度</h2>
+  <p class="sec-intro">「最新技术视角」依赖于外部基准，以下区分一手官方资料与二手资料。<span class="conf h">一手</span>为规范 / 官方文档 / 官方公告；<span class="conf m">二手</span>为行业文章或社区汇总，结论需复核。</p>
+  <div class="src"><ol>
+    <li id="s1"><span class="conf h">一手</span>MCP 官方博客《The 2026-07-28 Specification》与官方 changelog：无状态核心、server/discover、移除 initialize 与 ping、CIMD、缓存字段、弃用项、扩展机制。—— <a href="https://blog.modelcontextprotocol.io/posts/2026-07-28">发布公告</a> · <a href="https://modelcontextprotocol.io/specification/2026-07-28/changelog">变更清单</a></li>
+    <li id="s2"><span class="conf h">一手</span>LangChain 官方 Python v1 发布说明：create_agent、middleware（PII / 摘要 / HITL）、结构化输出并入主循环、基于 LangGraph 的持久化与流式。—— <a href="https://docs.langchain.com/oss/python/releases/langchain-v1">What's new in LangChain v1</a></li>
+    <li id="s3"><span class="conf h">一手</span>LangGraph 官方持久化文档：checkpointer 与 store 的分工、MemorySaver 不跨重启、PostgresSaver / SqliteSaver、检查点无界增长需裁剪。—— <a href="https://docs.langchain.com/oss/python/langgraph/persistence">Persistence</a></li>
+    <li id="s4"><span class="conf h">一手</span>OpenAI 官方《使用 GPT-5 构建的实务指南》建议迁移 Responses API（推理项保留、缓存、内置工具）；官方帮助中心公告 GPT-4o 于 2026-02-13 在 ChatGPT 端退役、API 仍可用。—— <a href="https://openai.com/zh-Hant/business/guides-and-resources/a-practical-guide-to-building-with-ai">构建指南</a> · <a href="https://help.openai.com/en/articles/20001051-retiring-gpt-4o-and-other-chatgpt-models">退役公告</a></li>
+    <li id="s5"><span class="conf h">一手</span>OpenTelemetry 官方博客《Inside the LLM Call: GenAI Observability with OpenTelemetry》：gen_ai.* 属性、invoke_agent / execute_tool span 层级、token 计数与内容捕获开关。—— <a href="https://opentelemetry.io/blog/2026/genai-observability">官方博客</a></li>
+    <li id="s6"><span class="conf h">一手</span>Linux Foundation 2026-04-09 新闻稿：A2A 1.0 稳定版、签名 Agent Card、150+ 组织、与 MCP 的互补定位。—— <a href="https://www.linuxfoundation.org/press/a2a-protocol-surpasses-150-organizations-lands-in-major-cloud-platforms-and-sees-enterprise-production-use-in-first-year">新闻稿</a></li>
+    <li id="s7"><span class="conf m">二手</span>用于补充：GPT-5.6 家族与 Responses/Chat Completions 差异、GenAI semconv 状态与自动插桩包、AG-UI / A2UI 采纳情况、MCP Python SDK v2 更名细节、uv / pyproject / lockfile 工程惯例、OWASP MCP Top 10。以上来自社区与技术媒体汇总，落地前应以对应官方文档复核。</li>
+    <li id="s8"><span class="conf m">二手</span>用于补充：2026 年记忆与 RAG 研究综述（LoCoMo / LongMemEval、contextual retrieval、RAW-RAG 对复杂记忆流水线的反证、reranker 与上下文预算的关系）。数字与排名来自二手解读，不构成本项目的选型依据。</li>
+  </ol></div>
+  <p class="note">项目内证据均为静态代码行号，来自本次审阅的全部 26 个文件。未安装依赖、未启动服务、未执行测试，因此未验证运行时行为；涉及「实际效果」的判断（如语义检索命中率、合规误杀率）需要用真实数据集复测。</p>
+</section>
+
+<footer>
+  <div>HeteroAgent 技术代差评估 · 生成于 2026-11-06 · 基于工作区当前快照</div>
+  <div>结论适用范围：静态架构与技术选型评估；不构成运行时性能、安全渗透或合规审计结论。</div>
+</footer>
+</div>
+
+<script>
+(function(){
+  var bar=document.getElementById('progress');
+  function update(){
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    var p=h>0?(window.scrollY/h)*100:0;
+    bar.style.width=Math.max(0,Math.min(100,p))+'%';
+  }
+  window.addEventListener('scroll',update,{passive:true});
+  window.addEventListener('resize',update);
+  update();
+})();
+</script>
+</body>
+</html>
