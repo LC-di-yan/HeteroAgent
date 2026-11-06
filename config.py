@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     # ── 合规 ──
     compliance_negation_window: int = 8
 
+    # ── 安全护栏（T-P2-08）：规则之上叠加模型分类器 ──
+    guardrail_enabled: bool = False
+    guardrail_endpoint: str = ""          # 分类服务 URL（Llama Guard / Prompt Guard / 内部风控）
+    guardrail_api_key: str = ""
+    guardrail_timeout_seconds: float = 3.0
+    guardrail_fail_closed: bool = False    # 分类器故障时：False=放行(可用性优先)，True=拦截
+
     # ── 检查点 ──
     checkpoint_backend: Literal["memory", "sqlite", "postgres"] = "sqlite"
     checkpoint_path: str = "./var/checkpoints.db"

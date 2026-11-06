@@ -231,6 +231,7 @@ def create_app(
     long_term_memory: Any | None = None,
     approvals: ApprovalStore | None = None,
     mcp_server: Any | None = None,
+    guardrail: Any | None = None,
 ) -> FastAPI:
     """应用工厂：依赖注入，测试可传入桩实现。"""
     st = settings or get_settings()
@@ -303,6 +304,14 @@ def create_app(
     app.state.ltm = long_term_memory
     app.state.approvals = approvals or create_approval_store(st)
     app.state.metrics = AgentMetrics()
+    if guardrail is None:
+        try:
+            from security.guardrail import build_guardrail_chain
+
+            guardrail = build_guardrail_chain(st)
+        except Exception as exc:  # 护栏初始化失败不影响主链路（规则检测仍在）
+            logger.warning("护栏初始化失败，退回规则检测: %s", exc)
+    app.state.guardrail = guardrail
     if mcp_server is None:
         try:
             from tooling.client import ToolGateway
@@ -374,10 +383,22 @@ def create_app(
     async def _guard_message(message: str, request: Request | None = None) -> None:
         if len(message) > st.max_message_chars:
             raise HTTPException(status_code=413, detail="消息长度超过上限")
+
+        rid = getattr(getattr(request, "state", None), "request_id", "-") or "-"
+        chain = getattr(app.state, "guardrail", None)
+        if chain is not None:  # 护栏链已包含规则层
+            verdict = await chain.check(message)
+            if verdict.blocked:
+                logger.warning("护栏拦截[%s] source=%s categories=%s", rid, verdict.source, verdict.categories[:2])
+                detail = "检测到疑似提示注入攻击，请求已被拒绝"
+                if verdict.categories:
+                    detail += f"（{', '.join(verdict.categories[:2])}）"
+                raise HTTPException(status_code=400, detail=detail)
+            return
+
         if detect_injection is not None:
             findings = detect_injection(message)
             if findings:
-                rid = getattr(request, "state", None) and getattr(request.state, "request_id", "-") or "-"
                 logger.warning("注入拦截[%s]: %s", rid, findings[:2])
                 raise HTTPException(status_code=400, detail="检测到疑似提示注入攻击，请求已被拒绝")
 
