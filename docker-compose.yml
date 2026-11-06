@@ -26,6 +26,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       APPROVAL_STORE: redis
+      RATE_LIMIT_BACKEND: redis
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       CHECKPOINT_PATH: /app/var/checkpoints.db
     # 检查点落宿主 ./var，容器重启不丢会话状态（镜像内不含 var/，见 .dockerignore）

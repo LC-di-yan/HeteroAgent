@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     api_keys: str = ""                  # 逗号分隔；为空且 require_auth=False 时放行
     require_auth: bool = False
     rate_limit_per_minute: int = 60
+    # 多副本需共享配额时设 redis（默认进程内）
+    rate_limit_backend: Literal["memory", "redis"] = "memory"
     max_body_bytes: int = 1_000_000
     max_message_chars: int = 8000
     cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000"

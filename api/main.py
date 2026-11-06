@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from config import Settings, get_settings
 from security.approvals import ApprovalRecord, ApprovalStore, create_approval_store
-from security.limits import RateLimiter
+from security.limits import build_rate_limiter
 from tracing.otel_config import AgentMetrics, init_tracer, set_global_metrics
 
 logger = logging.getLogger(__name__)
@@ -320,7 +320,7 @@ def create_app(
         except Exception as exc:  # 工具服务不可用时不影响主链路
             logger.warning("工具网关初始化失败: %s", exc)
     app.state.mcp = mcp_server
-    app.state.limiter = RateLimiter(per_minute=st.rate_limit_per_minute)
+    app.state.limiter = build_rate_limiter(st)
     app.state.eval_lock = asyncio.Lock()
 
     if app.state.ltm is None:
@@ -363,7 +363,7 @@ def create_app(
 
     async def limited(request: Request, principal: str = Depends(auth)) -> str:
         client_ip = request.client.host if request.client else "unknown"
-        allowed, retry_after = app.state.limiter.allow(principal or client_ip)
+        allowed, retry_after = await app.state.limiter.allow(principal or client_ip)
         if not allowed:
             raise HTTPException(
                 status_code=429,
