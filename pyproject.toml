@@ -52,6 +52,7 @@ dependencies = [
 # 可选依赖不进 requirements.txt，避免容器里出现未使用的重型包。
 [project.optional-dependencies]
 milvus = ["pymilvus>=2.4,<4"]
+postgres = ["langgraph-checkpoint-postgres>=2,<4", "psycopg[binary]>=3.1,<4"]
 rerank = ["sentence-transformers>=3,<7"]
 
 # ── 开发依赖（PEP 735 dependency groups）──

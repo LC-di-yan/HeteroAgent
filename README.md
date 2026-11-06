@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-204%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-209%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -132,7 +132,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | `API_KEYS` / `REQUIRE_AUTH` | 空 / `false` | 接口鉴权 |
 | `RATE_LIMIT_PER_MINUTE` | 60 | 每主体每分钟请求上限 |
 | `APPROVAL_STORE` | `memory` | 审批存储：`redis` 支持多副本 |
-| `CHECKPOINT_BACKEND` | `sqlite` | 图检查点：`sqlite` 支持重启后恢复 HITL |
+| `CHECKPOINT_BACKEND` | `sqlite` | 图检查点：`sqlite` 单副本；`postgres` 多副本共享（需 `POSTGRES_DSN`） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | 空 | 设置后导出 OTLP，否则仅进程内 span |
 
 完整清单见 [`.env.example`](.env.example)。
@@ -157,14 +157,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器 + 38 条版本化数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 204 项离线测试
+├── tests/                   # 209 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 204 passed（全部离线，无需 API Key）
+python -m pytest -q          # 209 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 

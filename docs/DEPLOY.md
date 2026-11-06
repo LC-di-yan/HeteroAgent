@@ -158,17 +158,13 @@ compose 默认**单副本**。加副本（`docker compose up -d --scale app=2`�
    compose 已在 `environment` 里强制 `APPROVAL_STORE=redis`，本地 venv 请自行设置。
 2. **检查点不能是本地 SQLite**：`CHECKPOINT_PATH` 指向各副本私有的 `./var/checkpoints.db` 时，
    同一 `session_id` 的第二个请求被路由到另一副本就读不到中断状态，会话/工单会丢。
-   - 现实约束（如实标注）：`config.py` 的 `checkpoint_backend` 是
-     `Literal["memory", "sqlite"]`，**当前 Settings 不接受 `postgres`**，填了会在校验阶段报错；
-     `agents/supervisor.py:288-302` 也只实现了 `SqliteSaver` → 失败回退 `MemorySaver`。
-   - 因此切 Postgres 是**两步代码改动，不是配置改动**：
-     (a) `pip install langgraph-checkpoint-postgres`（同时进 `pyproject.toml` 依赖真相源与
-     `requirements.txt`，否则镜像里没有这个包）；
-     (b) 扩展 `config.py:79` 的枚举为 `Literal["memory", "sqlite", "postgres"]`，并在
-     `_build_checkpointer()` 里增加 `PostgresSaver` 分支（含 `.setup()` 建表）。
-     本轮只交付编排与文档，未改 `.py`，所以 `docs/DEPLOY.md` 把 `var/checkpoints.db` 明确定义为
-     **单副本专用**，多副本落地以前述扩展为前提。扩展前的临时可用形态：粘性路由 + 每副本独立
-     `var` 卷（同一会话固定落同一副本）—— 只能保会话连续性，重启即丢，且无法跨副本恢复 HITL 中断。
+   - 现成支持：`CHECKPOINT_BACKEND=postgres` + `POSTGRES_DSN=postgresql://...`；
+     `agents/supervisor.py` 的 `_build_checkpointer()` 用 psycopg 建长连接并调用
+     `PostgresSaver.setup()`（幂等建表）。缺包或 DSN 为空会抛明确错误，不静默降级。
+   - 需额外安装（可选依赖）：`pip install langgraph-checkpoint-postgres`
+     （见 `pyproject.toml` 的 `[project.optional-dependencies].postgres`）。
+   - 未启用 Postgres 时，`var/checkpoints.db` 明确为**单副本专用**；多副本临时形态是
+     「粘性路由 + 每副本独立 var 卷」——只保会话连续性，重启即丢，且无法跨副本恢复 HITL 中断。
 3. **短期记忆/限流共享**：`REDIS_URL` 必须指向所有副本共用的 Redis（compose 内已共用同一服务）。
 4. **向量索引一致性**：FAISS 索引`不进镜像`（`.dockerignore` 排除 `vector_store/`），
    每个副本各自重建，扩容期 CPU/IO 抖动明显。多副本更推荐 `VECTOR_STORE_TYPE=milvus`

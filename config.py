@@ -76,8 +76,10 @@ class Settings(BaseSettings):
     compliance_negation_window: int = 8
 
     # ── 检查点 ──
-    checkpoint_backend: Literal["memory", "sqlite"] = "sqlite"
+    checkpoint_backend: Literal["memory", "sqlite", "postgres"] = "sqlite"
     checkpoint_path: str = "./var/checkpoints.db"
+    # Postgres 检查点（多副本共享 HITL 状态）：需 pip install langgraph-checkpoint-postgres
+    postgres_dsn: str = ""
     checkpoint_retention_days: int = 14
 
     # ── 可观测（G13：采样配置必须被读取）──

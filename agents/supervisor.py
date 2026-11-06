@@ -286,6 +286,31 @@ def route_to_agent(state: AgentState) -> str:
 
 
 def _build_checkpointer(settings: Settings):
+    if settings.checkpoint_backend == "postgres":
+        dsn = (settings.postgres_dsn or "").strip()
+        if not dsn:
+            raise RuntimeError(
+                "CHECKPOINT_BACKEND=postgres 但 POSTGRES_DSN 为空；"
+                "请设置 POSTGRES_DSN 或改用 sqlite"
+            )
+        try:
+            import psycopg
+            from langgraph.checkpoint.postgres import PostgresSaver
+        except ImportError as exc:  # 可选依赖
+            raise RuntimeError(
+                "缺少 langgraph-checkpoint-postgres，请执行 "
+                "pip install langgraph-checkpoint-postgres 后再启用 Postgres 检查点"
+            ) from exc
+        try:
+            # 用长连接构造（from_conn_string 是上下文管理器，不能直接交给 compile）
+            conn = psycopg.connect(dsn, autocommit=True, prepare_threshold=0)
+            saver = PostgresSaver(conn)
+            saver.setup()  # 首次运行时建检查点表；已存在则幂等
+        except Exception as exc:
+            raise RuntimeError(f"Postgres 检查点初始化失败: {exc}") from exc
+        logger.info("检查点后端: Postgres（多副本共享）")
+        return saver
+
     if settings.checkpoint_backend == "sqlite":
         try:
             import os
