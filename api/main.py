@@ -319,7 +319,7 @@ def create_app(
                 logger.warning("检查点关闭失败: %s", exc)
 
     app = FastAPI(
-        title="HeteroAgent 智能客服多Agent系统",
+        title=f"{st.app_name} 智能客服多Agent系统",
         version=APP_VERSION,
         lifespan=lifespan,
     )

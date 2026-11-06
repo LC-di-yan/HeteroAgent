@@ -180,7 +180,11 @@ compose 默认**单副本**。加副本（`docker compose up -d --scale app=2`�
 1. **审批存储必须走 Redis**：`APPROVAL_STORE=redis`。`memory` 是进程内队列，
    副本 A 发起的待审批在副本 B 查不到、也恢复不了，HITL 直接失联。
    compose 已在 `environment` 里强制 `APPROVAL_STORE=redis`，本地 venv 请自行设置。
-2. **检查点不能是本地 SQLite**：`CHECKPOINT_PATH` 指向各副本私有的 `./var/checkpoints.db` 时，
+2. **检查点会持续增长**：LangGraph 的检查点表不带时间戳，应用层无法精确裁剪，
+   因此没有 retention 配置项。运维手段：SQLite 单副本可在无待审批单时直接轮换
+   `var/checkpoints.db`；Postgres 用 SQL 按 `thread_id` 清理（先归档再删），
+   或定期重建实例。上线前请把这条写进值班手册。
+3. **检查点不能是本地 SQLite**：`CHECKPOINT_PATH` 指向各副本私有的 `./var/checkpoints.db` 时，
    同一 `session_id` 的第二个请求被路由到另一副本就读不到中断状态，会话/工单会丢。
    - 现成支持：`CHECKPOINT_BACKEND=postgres` + `POSTGRES_DSN=postgresql://...`；
      `agents/supervisor.py` 的 `_build_checkpointer()` 用 psycopg 建长连接并调用
@@ -191,11 +195,11 @@ compose 默认**单副本**。加副本（`docker compose up -d --scale app=2`�
      否则 `graph.ainvoke` 会抛 "does not support async methods"）。同步实现仅适用于 `graph.invoke`。
    - 未启用 Postgres 时，`var/checkpoints.db` 明确为**单副本专用**；多副本临时形态是
      「粘性路由 + 每副本独立 var 卷」——只保会话连续性，重启即丢，且无法跨副本恢复 HITL 中断。
-3. **短期记忆/限流共享**：`REDIS_URL` 必须指向所有副本共用的 Redis（compose 内已共用同一服务）。
-4. **向量索引一致性**：FAISS 索引`不进镜像`（`.dockerignore` 排除 `vector_store/`），
+4. **短期记忆/限流共享**：`REDIS_URL` 必须指向所有副本共用的 Redis（compose 内已共用同一服务）。
+5. **向量索引一致性**：FAISS 索引`不进镜像`（`.dockerignore` 排除 `vector_store/`），
    每个副本各自重建，扩容期 CPU/IO 抖动明显。多副本更推荐 `VECTOR_STORE_TYPE=milvus`
    （可选依赖：`pip install "heteroagent[milvus]"`），把索引放到共享服务。
-5. **入口与就绪**：副本前面必须放反向代理做健康检查摘除，只把流量给 `/health/ready`=200 的副本；
+6. **入口与就绪**：副本前面必须放反向代理做健康检查摘除，只把流量给 `/health/ready`=200 的副本；
    `/health/live`=200 只说明进程活着，不代表能服务。
 6. **别开多 worker**：横向扩副本，纵向 `--workers` 会复制第 1/2/4 条的所有状态分裂问题。
 

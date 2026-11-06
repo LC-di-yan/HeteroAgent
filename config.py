@@ -97,7 +97,8 @@ class Settings(BaseSettings):
     checkpoint_path: str = "./var/checkpoints.db"
     # Postgres 检查点（多副本共享 HITL 状态）：需 pip install langgraph-checkpoint-postgres
     postgres_dsn: str = ""
-    checkpoint_retention_days: int = 14
+    # 注：检查点保留策略由运维管理（见 docs/DEPLOY.md）；LangGraph 的检查点表不带时间戳，
+    # 应用层无从精确裁剪，因此不提供误导性的 retention 配置项。
 
     # ── 可观测（G13：采样配置必须被读取）──
     otel_service_name: str = "heteroagent"
