@@ -96,3 +96,19 @@ def test_demo_mode_with_sqlite_checkpoint(tmp_path):
                            json={"message": "理财产品A的收益率是多少", "user_id": "u1", "session_id": "sqlite"})
         assert resp.status_code == 200, resp.text
         assert "3.5%" in resp.json()["response"]
+
+def test_demo_router_prefers_knowledge_for_questions():
+    """问"材料/流程/政策"应走知识库，只有办理动作才走工单。"""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    model = ScriptedChatModel()
+    sup = "你是 Supervisor"
+
+    def route(text: str) -> str:
+        return model._reply([SystemMessage(content=sup), HumanMessage(content=text)])
+
+    assert route("开户需要什么材料") == "knowledge_rag"
+    assert route("退款政策是怎样的") == "knowledge_rag"
+    assert route("我要申请退款") == "ticket_handler"
+    assert route("帮我查一下 TK-20261106-ABC123 的进度") == "ticket_handler"
+    assert route("我要投诉") == "ticket_handler"

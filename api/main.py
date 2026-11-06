@@ -209,6 +209,7 @@ class ChatResponse(BaseModel):
     compliance_passed: bool
     approval_id: str | None = None
     trace_id: str = ""
+    cache_hit: bool = False
 
 
 class DecisionRequest(BaseModel):
@@ -603,12 +604,14 @@ def create_app(
             request.user_id, count_tokens(request.message) + count_tokens(final_response)
         )
         await app.state.stm.add_message(run["session_id"], "assistant", final_response)
+        cache_info = result.get("sub_results", {}).get("cache") or {}
         return ChatResponse(
             response=final_response,
             session_id=run["session_id"],
             intent=str(result.get("intent", "unknown")),
             compliance_passed=True,
             trace_id=run["trace_id"],
+            cache_hit=bool(cache_info.get("hit")),
         )
 
     # ── SSE 流式（POST 为主，GET 为兼容保留） ──
@@ -733,6 +736,7 @@ def create_app(
             "response": response_text,
             "intent": str(state.get("intent", "unknown")),
             "compliance_passed": True,
+            "cache_hit": bool((state.get("sub_results", {}).get("cache") or {}).get("hit")),
         }
 
     async def _interrupted_payload(

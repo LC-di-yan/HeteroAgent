@@ -17,7 +17,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-_TICKET_HINTS = ("退款", "理赔", "开户", "投诉", "销户", "办理", "申请", "工单", "重置密码")
+_ACTION_HINTS = ("我要", "帮我", "申请", "办理", "提交", "投诉", "查询", "查一下", "销户", "重置", "赎回")
+_QUESTION_HINTS = ("什么", "怎么", "多少", "吗", "如何", "政策", "流程", "材料", "介绍", "哪些")
 _FORBIDDEN = ("保证收益", "稳赚不赔", "零风险", "保本保息")
 
 DEMO_KB: list[dict[str, str]] = [
@@ -61,7 +62,12 @@ class ScriptedChatModel(BaseChatModel):
         text = human
 
         if "Supervisor" in system:
-            return "ticket_handler" if any(h in human for h in _TICKET_HINTS) else "knowledge_rag"
+            # 与规则基线保持一致：有"办理动作"才走工单，"问政策/材料/流程"走知识库
+            action = any(k in human for k in _ACTION_HINTS)
+            question = any(k in human for k in _QUESTION_HINTS)
+            if action and not question:
+                return "ticket_handler"
+            return "knowledge_rag"
 
         if "合规审查" in system:
             hit = next((term for term in _FORBIDDEN if term in human), None)
@@ -81,15 +87,20 @@ class ScriptedChatModel(BaseChatModel):
             return "PASS"
 
         if "知识库问答" in system:
+            # 注意：生成提示词里带着"检索到的参考文档"，关键词必须只从用户问题里取，
+            # 否则会被文档内容带偏（真实踩过的坑）。
+            match = re.search(r"用户问题[:：]\s*(.+)", human)
+            question = (match.group(1).splitlines()[0] if match else human).strip()
+
             # 用户索要"保证收益"时，故意给出违规回答，用于演示合规拦截与人工审批
-            if any(k in human for k in ("保证", "稳赚", "零风险")):
+            if any(k in question for k in ("保证", "稳赚", "零风险")):
                 return "我们保证收益，零风险，稳赚不赔，保本保息。"
-            if "收益" in text or "理财" in text:
-                return "理财产品A的年化收益率为 3.5%-5.2%，期限 6 个月至 3 年，最低 10000 元起投。\n\n以上信息仅供参考，具体以合同条款为准。\n\n来源：product_faq.md"
-            if "退款" in text:
-                return "购买后 7 天内可申请无理由退款，超过 7 天需说明原因，退款 3-5 个工作日原路退回。\n\n来源：refund_policy.md"
-            if "开户" in text:
+            if "开户" in question or "材料" in question:
                 return "开户需准备身份证原件并完成视频认证与风险测评，全程约 15-30 分钟。\n\n来源：account_guide.md"
+            if "收益" in question or "理财" in question:
+                return "理财产品A的年化收益率为 3.5%-5.2%，期限 6 个月至 3 年，最低 10000 元起投。\n\n以上信息仅供参考，具体以合同条款为准。\n\n来源：product_faq.md"
+            if "退款" in question:
+                return "购买后 7 天内可申请无理由退款，超过 7 天需说明原因，退款 3-5 个工作日原路退回。\n\n来源：refund_policy.md"
             return "抱歉，知识库中暂未找到与您问题高度相关的信息。已为您转接人工客服。"
 
         return "（演示模式）已收到您的问题。"
