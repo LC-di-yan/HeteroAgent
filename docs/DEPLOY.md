@@ -85,6 +85,13 @@ docker run --rm -p 8000:8000 --env-file .env \
 
 ---
 
+## 2.4 日志形态
+
+- 默认 `LOG_FORMAT=text`：`2026-11-06 22:30:01 INFO    [<request_id>] api.main: ...`
+- 采集型部署设 `LOG_FORMAT=json`：单行 JSON（ts/level/logger/msg/request_id/exc）
+- `request_id` 来自请求头 `X-Request-ID`，缺省自动生成并回写响应头；同一请求的
+  路由/检索/合规/工具日志可用它串联。
+
 ## 2.5 监控接入（Prometheus 抓取）
 
 `GET /metrics` 输出 Prometheus 文本格式（counter/gauge + 分位数标签），无需额外依赖：

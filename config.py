@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     debug: bool = False
+    # 日志：text / json（json 便于采集与检索）
+    log_level: str = "INFO"
+    log_format: Literal["text", "json"] = "text"
 
     # ── LLM ──
     openai_api_key: str = ""

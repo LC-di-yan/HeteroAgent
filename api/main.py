@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from config import Settings, get_settings
 from security.approvals import ApprovalRecord, ApprovalStore, create_approval_store
 from security.limits import build_rate_limiter
+from tracing.logging_setup import configure_logging, reset_request_id, set_request_id
 from tracing.otel_config import AgentMetrics, init_tracer, set_global_metrics
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,7 @@ def create_app(
 ) -> FastAPI:
     """应用工厂：依赖注入，测试可传入桩实现。"""
     st = settings or get_settings()
+    configure_logging(level=getattr(st, "log_level", "INFO"), fmt=getattr(st, "log_format", "text"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -379,14 +381,19 @@ def create_app(
 
     @app.middleware("http")
     async def _request_guard(request: Request, call_next):
-        content_length = request.headers.get("content-length", "")
-        if content_length.isdigit() and int(content_length) > st.max_body_bytes:
-            return JSONResponse({"detail": "请求体过大"}, status_code=413)
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        token = set_request_id(request_id)
+        try:
+            content_length = request.headers.get("content-length", "")
+            if content_length.isdigit() and int(content_length) > st.max_body_bytes:
+                return JSONResponse({"detail": "请求体过大"}, status_code=413,
+                                    headers={"X-Request-ID": request_id})
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            reset_request_id(token)
 
     # ── 依赖 ──
 
