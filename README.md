@@ -11,6 +11,13 @@
 ![聊天界面](docs/screenshots/chat-ui.png)
 
 <details>
+<summary>合规拦截 → 聊天流内直接审批（HITL）</summary>
+
+![Approval](docs/screenshots/approval-flow.png)
+
+</details>
+
+<details>
 <summary>API 文档截图（Swagger UI）</summary>
 
 ![Swagger](docs/screenshots/swagger.png)
@@ -42,7 +49,7 @@
 | 检索 | FAISS 向量 + BM25（单字+双字混合分词）混合检索 + RRF 融合；分数归一化到 [0,1]；支持 Contextual Retrieval 入库 |
 | 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |
 | 安全 | 注入检测前置（NFKC/零宽对抗归一化）+ 可选模型护栏链（分类器超时/故障策略可配）、API Key 鉴权、限流、长度上限 |
-| 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；哈希链审计 |
+| 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；聊天界面内可直接通过/拒绝；哈希链审计 |
 | 记忆 | Redis 短期记忆（tiktoken 预算）+ 跨会话用户事实（LangGraph Store，按 org/user 隔离）+ 有界 LRU embedding 缓存 |
 | 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95 指标、成本累计 |
 | 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集（漏放/误杀/脱敏）+ 30 条路由标注集；`python -m evaluation.run` 统一门禁（非 0 退出码） |

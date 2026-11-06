@@ -390,6 +390,24 @@
     .badge.fail   { background: var(--badge-fail-bg);   color: var(--badge-fail-clr);   border: 1px solid var(--badge-fail-bdr); }
     .badge .ico { font-size: 10px; }
 
+    /* ── HITL 审批卡片 ── */
+    .approval-card {
+      margin-top: 10px; padding: 12px 14px; border-radius: var(--radius);
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .approval-actions { display: flex; gap: 8px; }
+    .approval-actions button {
+      flex: 1; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+      font-size: 13px; font-family: inherit; transition: var(--transition);
+    }
+    .approval-actions button:hover:not(:disabled) { background: var(--bg-hover); }
+    .approval-actions button:disabled { opacity: .5; cursor: not-allowed; }
+    .approval-actions button.primary { border-color: var(--emerald); color: var(--emerald); }
+    .approval-actions button.danger  { border-color: var(--rose);    color: var(--rose); }
+    .approval-status { font-size: 12px; color: var(--text-sec); }
+
     .msg-time { font-size: 11px; color: var(--text-dim); padding: 0 4px; margin-top: 2px; }
 
     /* ── Typing ── */
@@ -686,6 +704,7 @@ async function sendMessage() {
             typingRow.classList.remove('active');
             clearStream();
             addMsg('bot', evt.response, evt.intent, evt.compliance_passed);
+            if (evt.approval_id) addApprovalCard(evt.approval_id, evt.intent);
           } else if (evt.type === 'error') {
             typingRow.classList.remove('active');
             addMsg('bot', '⚠️ ' + (evt.message || '处理异常'), 'error', false);
@@ -750,6 +769,50 @@ function addMsg(role, text, intent, compliance) {
   const ts = document.createElement('div'); ts.className = 'msg-time'; ts.textContent = fmtTime(); body.appendChild(ts);
   row.appendChild(av); row.appendChild(body);
   container.insertBefore(row, typingRow); scroll();
+}
+
+/* ── HITL：在聊天流里直接审批，不必再开 Swagger/curl ── */
+function addApprovalCard(approvalId, intent) {
+  const row = document.createElement('div'); row.className = 'msg bot';
+  const av = document.createElement('div'); av.className = 'msg-avatar'; av.textContent = '🛡️';
+  const body = document.createElement('div'); body.className = 'msg-body';
+  const card = document.createElement('div'); card.className = 'approval-card';
+
+  const title = document.createElement('div');
+  title.textContent = '该请求触发合规审查，需要人工确认（审批编号 ' + approvalId.slice(0, 8) + '…）';
+
+  const actions = document.createElement('div'); actions.className = 'approval-actions';
+  const okBtn = document.createElement('button'); okBtn.className = 'primary'; okBtn.textContent = '✅ 审批通过';
+  const noBtn = document.createElement('button'); noBtn.className = 'danger'; noBtn.textContent = '❌ 拒绝';
+  actions.appendChild(okBtn); actions.appendChild(noBtn);
+
+  const status = document.createElement('div'); status.className = 'approval-status';
+
+  card.appendChild(title); card.appendChild(actions); card.appendChild(status);
+  body.appendChild(card); row.appendChild(av); row.appendChild(body);
+  container.insertBefore(row, typingRow); scroll();
+
+  async function decide(kind) {
+    okBtn.disabled = noBtn.disabled = true;
+    status.textContent = '处理中…';
+    try {
+      const resp = await fetch(API + '/api/approvals/' + approvalId + '/' + kind, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: '前端审批' })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
+      actions.remove(); status.remove();
+      addMsg('bot', data.response, intent, kind === 'approve');
+    } catch (e) {
+      status.textContent = '⚠️ ' + (e.message || '审批失败');
+      okBtn.disabled = noBtn.disabled = false;
+    }
+  }
+
+  okBtn.onclick = () => decide('approve');
+  noBtn.onclick = () => decide('reject');
 }
 
 function scroll() { requestAnimationFrame(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }); }
