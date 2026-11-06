@@ -209,7 +209,9 @@ python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 - [ ] **P2** 检索质量（contextual retrieval、中文重排）、评估入 CI、AG-UI 流式、多副本
 - [ ] **P3** 按需：A2A、多模态、语义缓存、模型分级路由
 
-详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)；关键决策记录见 [docs/adr/](docs/adr/README.md)（固定拓扑、fail-closed、禁用伪向量、MCP 迁移、HITL、布局策略、工单双实现过渡）。
+详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)；关键决策记录见 [docs/adr/](docs/adr/README.md)（固定拓扑、fail-closed、禁用伪向量、MCP 迁移、HITL、布局策略、工单双实现过渡、跨会话事实）。
+
+变更历史见 [CHANGELOG.md](CHANGELOG.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可
 

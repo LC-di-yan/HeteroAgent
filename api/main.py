@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - 注入模块尚未就绪时显式告警
     logger.warning("security.injection 未就绪，注入前置检测不可用")
 
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 SEED_KB: list[tuple[str, str]] = [
     ("我们的理财产品A年化收益率为3.5%-5.2%，投资期限为6个月至3年，最低投资金额10000元。注意：理财非存款，产品有风险，投资须谨慎。", "product_faq.md"),
