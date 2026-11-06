@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 
 import fakeredis.aioredis
-import pytest
 
 from config import Settings
 from security.limits import RateLimiter, RedisRateLimiter, build_rate_limiter
