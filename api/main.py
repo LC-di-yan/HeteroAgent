@@ -481,31 +481,31 @@ def create_app(
 
     # ── SSE 流式（POST 为主，GET 为兼容保留） ──
 
-    async def _event_stream(message: str, user_id: str, session_id: str | None) -> AsyncGenerator[str, None]:
-        session_id = session_id or str(uuid.uuid4())
-        yield f"data: {json.dumps({'type': 'session', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-        try:
+    def _sse(payload: dict[str, Any]) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def _stream_events(
+        message: str, user_id: str, session_id: str
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """逐节点驱动图执行并产出事件（T-P2-06 的第一阶段）。
+
+        - 有 astream 的实现：按 stream_mode="updates" 推送真实节点进度；
+        - 无 astream 的实现（测试桩/旧实现）：退回一次性调用。
+        """
+        graph = app.state.graph
+        if graph is None or not hasattr(graph, "astream"):
             run = await _run_chat(message, user_id, session_id)
             result = run["result"]
-            yield f"data: {json.dumps({'type': 'stage', 'node': 'synthesize', 'label': _STAGE_LABELS['synthesize']}, ensure_ascii=False)}\n\n"
+            yield {"type": "stage", "node": "synthesize", "label": _STAGE_LABELS["synthesize"]}
             if run.get("interrupted"):
-                notice = (
-                    "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
-                    f"审批编号：{run['approval_id']}。人工确认后我们会尽快回复您。"
+                yield await _interrupted_payload(
+                    run["approval_id"], run["session_id"], str(result.get("intent", "unknown"))
                 )
-                await app.state.stm.add_message(run["session_id"], "assistant", notice)
-                payload = {
-                    "type": "response",
-                    "response": notice,
-                    "intent": str(result.get("intent", "unknown")),
-                    "compliance_passed": False,
-                    "approval_id": run["approval_id"],
-                }
             elif not result.get("compliance_passed", True):
                 chat_response = await _handle_compliance_failure(
                     result, run["session_id"], run["trace_id"], user_id, message
                 )
-                payload = {
+                yield {
                     "type": "response",
                     "response": chat_response.response,
                     "intent": chat_response.intent,
@@ -513,19 +513,113 @@ def create_app(
                     "approval_id": chat_response.approval_id,
                 }
             else:
-                payload = {
+                response_text = result.get("final_response", "")
+                await app.state.stm.add_message(run["session_id"], "assistant", response_text)
+                yield {
                     "type": "response",
-                    "response": result.get("final_response", ""),
-                    "intent": result.get("intent", "unknown"),
+                    "response": response_text,
+                    "intent": str(result.get("intent", "unknown")),
                     "compliance_passed": True,
                 }
-                await app.state.stm.add_message(session_id, "assistant", payload["response"])
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+            return
+
+        await _guard_message(message)
+        trace_id = uuid.uuid4().hex
+        await app.state.stm.add_message(session_id, "user", message)
+        context_messages = await _build_context_messages(
+            app.state.stm, session_id, message, st.max_context_tokens
+        )
+        initial_state = {
+            "messages": context_messages,
+            "user_id": user_id,
+            "session_id": session_id,
+            "trace_id": trace_id,
+            "intent": "",
+            "sub_results": {},
+            "compliance_passed": True,
+            "final_response": "",
+            "retry_count": 0,
+            "approval_id": None,
+            "approval_decision": None,
+        }
+        config = {"configurable": {"thread_id": f"{user_id}:{session_id}"[:255]}}
+
+        state: dict[str, Any] = {}
+        approval_id: str | None = None
+
+        async for chunk in graph.astream(initial_state, config=config, stream_mode="updates"):
+            if not isinstance(chunk, dict):
+                continue
+            if "__interrupt__" in chunk:
+                pending = chunk.get("__interrupt__") or []
+                value = getattr(pending[0], "value", {}) if pending else {}
+                approval_id = value.get("approval_id") if isinstance(value, dict) else None
+                continue
+            for node, delta in chunk.items():
+                if isinstance(delta, dict):
+                    state.update(delta)
+                yield {
+                    "type": "stage",
+                    "node": node,
+                    "label": _STAGE_LABELS.get(node, f"⚙️ {node}"),
+                }
+
+        if approval_id is not None:
+            yield await _interrupted_payload(approval_id, session_id, str(state.get("intent", "unknown")))
+            return
+
+        if not state.get("compliance_passed", True):
+            chat_response = await _handle_compliance_failure(
+                state, session_id, trace_id, user_id, message
+            )
+            yield {
+                "type": "response",
+                "response": chat_response.response,
+                "intent": chat_response.intent,
+                "compliance_passed": False,
+                "approval_id": chat_response.approval_id,
+            }
+            return
+
+        response_text = state.get("final_response", "")
+        await app.state.stm.add_message(session_id, "assistant", response_text)
+        yield {
+            "type": "response",
+            "response": response_text,
+            "intent": str(state.get("intent", "unknown")),
+            "compliance_passed": True,
+        }
+
+    async def _interrupted_payload(
+        approval_id: str | None, session_id: str, intent: str
+    ) -> dict[str, Any]:
+        notice = (
+            "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
+            f"审批编号：{approval_id}。人工确认后我们会尽快回复您。"
+        )
+        await app.state.stm.add_message(session_id, "assistant", notice)
+        return {
+            "type": "response",
+            "response": notice,
+            "intent": intent,
+            "compliance_passed": False,
+            "approval_id": approval_id,
+        }
+
+    async def _event_stream(
+        message: str, user_id: str, session_id: str | None
+    ) -> AsyncGenerator[str, None]:
+        session_id = session_id or str(uuid.uuid4())
+        yield _sse({"type": "session", "session_id": session_id})
+        try:
+            async for event in _stream_events(message, user_id, session_id):
+                yield _sse(event)
+            yield _sse({"type": "done"})
         except HTTPException as exc:
-            yield f"data: {json.dumps({'type': 'error', 'status': exc.status_code, 'message': str(exc.detail)}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+            yield _sse({"type": "error", "status": exc.status_code, "message": str(exc.detail)})
+        except Exception as exc:  # noqa: BLE001 - SSE 内不能抛，转成错误事件
+            logger.exception("SSE 流式失败")
+            yield _sse({"type": "error", "message": str(exc)})
 
     @app.post("/api/chat/stream")
     async def chat_stream_post(request: ChatRequest, principal: str = Depends(limited)):
