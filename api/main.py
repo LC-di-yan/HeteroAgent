@@ -770,7 +770,7 @@ def create_app(
         )
 
     @app.get("/api/users/{user_id}/facts")
-    async def user_facts(user_id: str, principal: str = Depends(auth)):
+    async def user_facts(user_id: str, principal: str = Depends(limited)):
         """查看某用户的跨会话事实（运维/客服排查用）。"""
         store = getattr(app.state, "context_store", None)
         if store is None:
@@ -784,7 +784,7 @@ def create_app(
     # ── 历史 ──
 
     @app.get("/api/history/{session_id}")
-    async def history(session_id: str, principal: str = Depends(auth)):
+    async def history(session_id: str, principal: str = Depends(limited)):
         try:
             messages = await app.state.stm.get_history(session_id)
         except Exception as exc:
@@ -794,7 +794,7 @@ def create_app(
     # ── 人工审批（HITL） ──
 
     @app.get("/api/approvals")
-    async def list_approvals(principal: str = Depends(auth)):
+    async def list_approvals(principal: str = Depends(limited)):
         records = await app.state.approvals.list_pending()
         return {
             "total": len(records),
@@ -813,7 +813,7 @@ def create_app(
         }
 
     @app.get("/api/approvals/{approval_id}")
-    async def get_approval(approval_id: str, principal: str = Depends(auth)):
+    async def get_approval(approval_id: str, principal: str = Depends(limited)):
         rec = await app.state.approvals.get(approval_id)
         if rec is None:
             raise HTTPException(status_code=404, detail="审批单不存在或已过期")
@@ -866,15 +866,15 @@ def create_app(
         }
 
     @app.post("/api/approvals/{approval_id}/approve")
-    async def approve(approval_id: str, body: DecisionRequest, principal: str = Depends(auth)):
+    async def approve(approval_id: str, body: DecisionRequest, principal: str = Depends(limited)):
         return await _decide(approval_id, "approved", body, principal)
 
     @app.post("/api/approvals/{approval_id}/reject")
-    async def reject(approval_id: str, body: DecisionRequest, principal: str = Depends(auth)):
+    async def reject(approval_id: str, body: DecisionRequest, principal: str = Depends(limited)):
         return await _decide(approval_id, "rejected", body, principal)
 
     @app.get("/api/approvals/audit/chain")
-    async def audit_chain(principal: str = Depends(auth)):
+    async def audit_chain(principal: str = Depends(limited)):
         rows = await app.state.approvals.audit_rows()
         from security.approvals import verify_chain
 
@@ -883,7 +883,7 @@ def create_app(
     # ── 指标（需鉴权） ──
 
     @app.get("/api/metrics")
-    async def metrics(principal: str = Depends(auth)):
+    async def metrics(principal: str = Depends(limited)):
         out: dict[str, Any] = {"agent_metrics": app.state.metrics.get_summary()}
         mcp = app.state.mcp
         if mcp is not None:
@@ -909,7 +909,7 @@ def create_app(
         raise HTTPException(status_code=405, detail="已废弃：请使用 POST /api/evaluations")
 
     @app.post("/api/evaluations")
-    async def run_evaluations(body: EvaluationRequest, principal: str = Depends(auth)):
+    async def run_evaluations(body: EvaluationRequest, principal: str = Depends(limited)):
         if app.state.eval_lock.locked():
             raise HTTPException(status_code=409, detail="已有评估任务在进行中")
         if app.state.graph is None:
