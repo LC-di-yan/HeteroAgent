@@ -39,3 +39,9 @@ dist/
 
 # ── 外部工具产物（本地开发助手记忆，不入库）──
 .workbuddy/
+
+# ── 覆盖率产物 ──
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
