@@ -16,6 +16,8 @@
 ## 决策
 
 - 维持扁平布局（顶层包：`api/ agents/ memory/ security/ tracing/ evaluation/ tooling/`）；
+- 2026-11-06 实测：`pip install uv` 在本机两次超过 300s 未完成（外网受限），因此 `uv.lock` 当前无法生成；
+  该步骤移交 CI（P2 的 T-P2-05 流水线里 `uv lock --check`），本地以区间约束 + `requirements.txt` 为准；
 - 依赖区间写死在 `pyproject.toml`（下界=验证版本，上界=下一大版本），`requirements.txt` 为镜像；
 - 不提交 `uv.lock`；等 CI（P2）需要可复现构建时再生成；
 - 若未来要发布/被其他项目引用，再执行 `src/heteroagent/` 迁移，届时一并加 `[build-system]`。
