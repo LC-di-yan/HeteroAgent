@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-272%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-278%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -175,15 +175,16 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 272 项离线测试
+├── tests/                   # 278 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 272 passed（全部离线，无需 API Key）
+python -m pytest -q          # 278 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
+python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 ```
 
 - 测试覆盖缺陷回归（G1–G14）、安全用例（注入变体、越权、限流）、HITL 中断/恢复、检索契约（分数归一化）、评估指标手算校验。

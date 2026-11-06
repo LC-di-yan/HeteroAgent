@@ -71,6 +71,15 @@ dev = [
 # pythonpath = ["."] 是关键：agents/ memory/ security/ tracing/ evaluation/
 # 等顶层包直接从仓库根导入（无 src/ 布局），不注入根路径时 pytest 会 ImportError。
 # ══════════════════════════════════════════════════════════════════════
+# 覆盖率口径：只统计源码包，不含测试与初始化文件（当前基线 82%）
+[tool.coverage.run]
+source = ["api", "agents", "memory", "security", "tooling", "tracing", "evaluation", "events"]
+omit = ["tests/*", "*/__init__.py", "*/demo_mode.py"]
+
+[tool.coverage.report]
+skip_covered = true
+precision = 1
+
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 pythonpath = ["."]

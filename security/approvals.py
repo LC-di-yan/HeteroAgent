@@ -199,8 +199,10 @@ class RedisApprovalStore:
 
     async def create(self, record: ApprovalRecord) -> ApprovalRecord:
         client = await self._redis()
+        # Redis 不接受非正的 EX；ttl<=0 视为"立即过期"，仍短暂保留以便读取到 expired 状态
+        ttl = self._ttl if self._ttl > 0 else 1
         await client.set(f"{RECORD_PREFIX}:{record.approval_id}",
-                         json.dumps(record.to_dict(), ensure_ascii=False), ex=self._ttl)
+                         json.dumps(record.to_dict(), ensure_ascii=False), ex=ttl)
         await client.zadd(PENDING_KEY, {record.approval_id: record.created_at})
         await client.expire(PENDING_KEY, self._ttl)
         return record
@@ -222,8 +224,9 @@ class RedisApprovalStore:
 
     async def _save(self, rec: ApprovalRecord) -> None:
         client = await self._redis()
+        ttl = self._ttl if self._ttl > 0 else 1
         await client.set(f"{RECORD_PREFIX}:{rec.approval_id}",
-                         json.dumps(rec.to_dict(), ensure_ascii=False), ex=self._ttl)
+                         json.dumps(rec.to_dict(), ensure_ascii=False), ex=ttl)
 
     async def list_pending(self) -> list[ApprovalRecord]:
         client = await self._redis()
