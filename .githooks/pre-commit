@@ -1,0 +1,9 @@
+#!/bin/sh
+# 提交前门禁：ruff + pytest（跳过测试：SKIP_TESTS=1 git commit ...）
+# 启用：make hooks   （等价于 git config core.hooksPath .githooks）
+# 临时绕过：git commit --no-verify
+
+set -e
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+python scripts/check.py

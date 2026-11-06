@@ -186,6 +186,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ```bash
 python -m pytest -q          # 290 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
+make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 ```
 

@@ -17,7 +17,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := install
 
-.PHONY: install run dev test lint format cov docker-build compose-up compose-down eval eval-all route-eval calibrate
+.PHONY: install run dev test lint format cov hooks check docker-build compose-up compose-down eval eval-all route-eval calibrate
 
 # 安装运行时依赖 + 开发工具（比 CI 多装 pytest-cov，供 cov 目标使用）
 # 等价命令：python -m pip install -r requirements.txt pytest pytest-asyncio pytest-cov ruff
@@ -71,6 +71,16 @@ compose-down:
 	$(COMPOSE) down
 
 # RAG 离线评估（默认 --no-llm 不调判分模型，检索指标照常产出）
+# 启用本地 pre-commit 钩子（ruff + pytest）；GitHub CI 未启用时的兜底
+# 等价命令：git config core.hooksPath .githooks
+hooks:
+	git config core.hooksPath .githooks
+
+# 手动跑一遍提交前检查（--fast 只跑 ruff）
+# 等价命令：python scripts/check.py
+check:
+	$(PY) scripts/check.py
+
 # 统一门禁（路由 + 合规），退出码非 0 表示低于阈值
 # 等价命令：python -m evaluation.run
 eval:

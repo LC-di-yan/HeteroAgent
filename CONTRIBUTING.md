@@ -12,9 +12,18 @@ cp .env.example .env    # 填写 OPENAI_API_KEY（或使用 DEMO_MODE=true 免�
 ## 提交前必跑
 
 ```bash
-python -m ruff check . --exclude docs   # 必须 0 告警
-python -m pytest -q                     # 必须全绿（当前 290 项，全离线）
+make hooks      # 一次性：启用 .githooks/pre-commit（ruff + pytest 自动跑）
+make check      # 手动跑同一套检查；--fast 可只跑 ruff
 ```
+
+等价裸命令：
+
+```bash
+python -m ruff check . --exclude docs   # 必须 0 告警
+python -m pytest -q                     # 必须全绿（当前 290+ 项，全离线）
+```
+
+临时跳过测试提交：`SKIP_TESTS=1 git commit ...`；完全绕过钩子：`git commit --no-verify`。
 
 涉及检索/合规/路由的改动，还需：
 
