@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-223%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-230%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -127,7 +127,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | `MODEL_NAME` | `gpt-5.1` | 主模型；`LIGHT_MODEL_NAME` 可指定轻模型 |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
 | `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
-| `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1] |
+| `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1]；用 `make calibrate` 在标注集上校准 |
 | `RERANK_ENABLED` / `RERANK_MODEL` | `false` / bge-reranker-v2-m3 | 可选交叉编码器重排 |
 | `API_KEYS` / `REQUIRE_AUTH` | 空 / `false` | 接口鉴权 |
 | `RATE_LIMIT_PER_MINUTE` | 60 | 每主体每分钟请求上限 |
@@ -155,17 +155,17 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 │   └── limits.py            # 滑动窗口限流
 ├── memory/                  # FAISS + BM25 混合检索、Contextual Retrieval 入库；Redis 短期记忆
 ├── tracing/                 # OpenTelemetry GenAI 语义约定
-├── evaluation/              # 评估器 + 38 条版本化数据集
+├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
-├── tests/                   # 223 项离线测试
+├── tests/                   # 230 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 223 passed（全部离线，无需 API Key）
+python -m pytest -q          # 230 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 ```
 
