@@ -16,6 +16,9 @@ env/
 .ruff_cache/
 
 # â”€â”€ å‘é‡åº“ä¸Žæ•°æ® â”€â”€
+var/
+*.db
+*.sqlite
 vector_store/
 *.faiss
 *.meta.json
@@ -33,3 +36,6 @@ Thumbs.db
 node_modules/
 dist/
 .next/
+
+# ©¤©¤ Íâ²¿¹¤¾ß²úÎï£¨±¾µØ¿ª·¢ÖúÊÖ¼ÇÒä£¬²»Èë¿â£©©¤©¤
+.workbuddy/

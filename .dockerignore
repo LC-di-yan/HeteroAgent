@@ -1,0 +1,45 @@
+# ══════════════════════════════════════════════════════════════════════
+# docker build 上下文裁剪（T-P0-11）
+# 目标：上下文最小化 + 真实密钥与本地状态绝不进镜像层。
+# ══════════════════════════════════════════════════════════════════════
+
+# ── Python 运行垃圾 ──
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.ruff_cache
+
+# ── 密钥与环境：只允许 .env.example 进镜像（见下行 !.env.example）──
+.env
+.env.local
+*.env
+!.env.example
+
+# ── 版本库与工具目录 ──
+.git
+.workbuddy
+
+# ── 本地运行时状态：检查点库、审批队列、向量索引（容器内重新生成）──
+var/
+vector_store/
+uploads/
+
+# ── 测试与文档：镜像不跑测试，测试在 CI/宿主执行 ──
+tests/
+UPGRADE-PLAN*.md
+tech-assessment-2026-11.html
+README.md
+
+# ── 虚拟环境与前端依赖 ──
+.venv
+venv/
+node_modules
+
+# ── 编辑器/系统垃圾文件 ──
+static/.DS_Store
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

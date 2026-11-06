@@ -1,19 +1,52 @@
-langgraph>=0.3.0
-langchain>=0.3.0
-langchain-openai>=0.3.0
-langchain-community>=0.3.0
-langsmith>=0.2.0
-fastapi>=0.115.0
-uvicorn>=0.32.0
-pydantic>=2.10.0
-redis>=5.2.0
-faiss-cpu>=1.9.0
-opentelemetry-api>=1.29.0
-opentelemetry-sdk>=1.29.0
-opentelemetry-exporter-otlp>=1.29.0
-opentelemetry-instrumentation-fastapi>=0.50b0
-mcp>=1.0.0
-httpx>=0.28.0
-python-dotenv>=1.0.0
-tiktoken>=0.8.0
-numpy>=1.26.0
+# ══════════════════════════════════════════════════════════════════════
+# HeteroAgent 运行时依赖（容器与生产安装入口）
+#
+# 真相源是 pyproject.toml 的 [project].dependencies —— 本文件只是它的
+# 人类可读镜像，条目与区间必须逐行一致。新增/升级依赖请先改 pyproject.toml，
+# 再同步到这里；不要反向操作。
+#
+# 区间规则：下界 = 开发机（Python 3.12.8）已验证版本，上界 = 下一大版本。
+# 未纳入本文件的依赖：
+#   * 可选后端 pymilvus / sentence-transformers → pyproject [project.optional-dependencies]
+#   * 开发工具 pytest / pytest-asyncio / pytest-cov / fakeredis / ruff → pyproject [dependency-groups].dev
+#   * langchain-community、langsmith：已从必装项移除（无代码引用；追踪上报走 OTLP）
+#   * mcp：本地 mcp/ 已改名为 tooling/（消除遮蔽），官方 SDK 现为必装依赖
+# ══════════════════════════════════════════════════════════════════════
+
+# ── Web 层 ──
+fastapi>=0.115.6,<1
+uvicorn[standard]>=0.48.0,<1
+
+# ── 配置与校验 ──
+pydantic>=2.13.4,<3
+pydantic-settings>=2.14.1,<3
+
+# ── 智能体编排 ──
+langchain>=1.4.2,<2
+langchain-openai>=1.2.1,<2
+langgraph>=1.2.11,<2
+langgraph-checkpoint-sqlite>=3.1.1,<4
+
+# ── 模型供应商 SDK ──
+openai>=2.48.0,<3
+
+# ── 记忆：短期 Redis / 长期向量库 ──
+redis>=8.0.1,<9
+faiss-cpu>=1.14.2,<2
+numpy>=2.4.4,<3
+
+# ── 上下文预算与 HTTP ──
+tiktoken>=0.12.0,<1
+httpx>=0.28.1,<1
+
+# ── 环境变量装载 ──
+python-dotenv>=1.0.1,<2
+
+# ── 工具协议（官方 MCP SDK）──
+mcp>=1.27.2,<3
+
+# ── 全链路追踪 ──
+opentelemetry-api>=1.42.1,<2
+opentelemetry-sdk>=1.42.1,<2
+opentelemetry-exporter-otlp>=1.42.1,<2
+opentelemetry-instrumentation-fastapi>=0.63b1,<1

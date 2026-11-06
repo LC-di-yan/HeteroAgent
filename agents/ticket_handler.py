@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -16,8 +17,10 @@ from langchain_openai import ChatOpenAI
 
 from tracing.otel_config import trace_agent_call
 
+logger = logging.getLogger(__name__)
 
-class TicketStatus(str, Enum):
+
+class TicketStatus(StrEnum):
     CREATED = "created"
     PROCESSING = "processing"
     PENDING_REVIEW = "pending_review"
@@ -26,7 +29,7 @@ class TicketStatus(str, Enum):
     ESCALATED = "escalated"
 
 
-class TicketPriority(str, Enum):
+class TicketPriority(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -110,12 +113,13 @@ class TicketHandlerAgent:
         self.ticket_store = ticket_store or TicketStore()
 
     @trace_agent_call("ticket_analyze")
-    async def analyze_request(self, user_message: str) -> dict:
+    async def analyze_request(self, user_message: str) -> dict | None:
         """
         分析用户需求，提取工单信息。
 
-        先做规则预判（正则识别工单号 → 查询），再让 LLM 兜底分析，
-        提升工单查询的识别准确率。
+        先做规则预判（正则识别工单号 → 查询），再让 LLM 兜底分析。
+        解析失败返回 None——绝不把「解析失败」当成「创建工单」的默认动作
+        （原实现会在模型输出畸形时静默创建垃圾工单）。
         """
         import json
         import re
@@ -138,17 +142,24 @@ class TicketHandlerAgent:
         ]
 
         response = await self.llm.ainvoke(messages)
+        raw = (getattr(response, "content", "") or "").strip()
+        fence = chr(96) * 3
+        if raw.startswith(fence):
+            raw = raw[len(fence):]
+            if raw.lower().startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+            if raw.endswith(fence):
+                raw = raw[: -len(fence)].strip()
 
         try:
-            return json.loads(response.content)
-        except json.JSONDecodeError:
-            return {
-                "action": "create",
-                "ticket_type": "general",
-                "priority": "medium",
-                "summary": user_message[:100],
-                "details": user_message,
-            }
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                return None
+            return parsed
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("工单信息解析失败，放弃自动建单（避免副作用）")
+            return None
 
     @trace_agent_call("ticket_create")
     async def create_ticket(self, ticket_info: dict, user_id: str) -> str:
@@ -213,12 +224,15 @@ class TicketHandlerAgent:
         last_message = messages[-1].content
         ticket_info = await self.analyze_request(last_message)
 
-        action = ticket_info.get("action", "create")
-
-        if action == "query" and "ticket_id" in ticket_info:
-            result = await self.query_ticket(ticket_info["ticket_id"])
+        if ticket_info is None:
+            result = ("抱歉，我没能完整理解您的需求。请说明您要办理的业务"
+                      "（例如退款、理赔、开户），或提供工单号以便查询。")
         else:
-            result = await self.create_ticket(ticket_info, user_id)
+            action = ticket_info.get("action", "create")
+            if action == "query" and ticket_info.get("ticket_id"):
+                result = await self.query_ticket(ticket_info["ticket_id"])
+            else:
+                result = await self.create_ticket(ticket_info, user_id)
 
         return {
             **state,

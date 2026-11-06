@@ -1,287 +1,270 @@
-"""
-Supervisor编排Agent — 中央协调者
-负责接收用户请求，根据意图路由到对应子Agent，汇总结果返回。
-采用LangGraph StateGraph实现，支持并行调度和Human-in-the-Loop断点。
-"""
+"""Supervisor 编排 —— P0 清理版。
 
+相对原实现的变化（T-P0-02/04/10 + 4.1.1）：
+- 删除 FAQ 早退与进程级路由缓存（跨用户共享、无上限、写错 intent）；
+- 路由解析改为容错解析 + 白名单，compliance 意图改走知识库（原实现返回空回复）；
+- 重试按异常类型判定，不再匹配英文错误字符串；
+- 聚合不再编造工单号（G10）；
+- 超时/重试参数来自集中配置。
+"""
 from __future__ import annotations
 
 import asyncio
-import operator
-import os
-import re
-import time
-from typing import Annotated, Any, Literal, TypedDict
+import logging
+from typing import Annotated, Any, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
 
-from agents.intent_router import IntentRouterAgent
-from agents.knowledge_rag import KnowledgeRAGAgent
-from agents.ticket_handler import TicketHandlerAgent
-from agents.compliance_checker import ComplianceCheckerAgent
-from memory.working_memory import WorkingMemory
-from memory.short_term import ShortTermMemory
-from memory.long_term import LongTermMemory
+from config import Settings
+from config import settings as default_settings
 from tracing.otel_config import trace_agent_call
 
+logger = logging.getLogger(__name__)
 
-# ─── 路由缓存（Q7 — Token 优化）───
-# 相同意图的路由决策缓存，避免重复 LLM 调用
-_ROUTE_CACHE: dict[str, tuple[str, float]] = {}
-_ROUTE_CACHE_TTL = int(os.getenv("ROUTE_CACHE_TTL", "300"))  # 默认 5 分钟
+try:  # 按异常类型判定可重试，避免匹配错误消息文本
+    from openai import (
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+        RateLimitError,
+    )
 
-# ─── FAQ 知识库（Q7 — 早退机制）───
-# 高频问题精确匹配，命中后跳过 Agent 链路直接返回
-FAQ_KNOWLEDGE: dict[str, str] = {
-    "理财产品a的收益率": "我们的理财产品A年化收益率为3.5%-5.2%，投资期限为6个月至3年，最低投资金额10000元。\n\n以上信息仅供参考，具体以合同条款为准。理财非存款，产品有风险，投资须谨慎。\n\n来源：product_faq.md",
-    "退款政策": "退款政策：用户在购买后7天内可申请无理由退款，超过7天需提供合理原因。退款将在3-5个工作日内原路退回。\n\n来源：refund_policy.md",
-    "如何开户": "开户流程：1.准备身份证原件 2.填写开户申请表 3.进行视频认证 4.设置交易密码 5.完成风险评估问卷。整个流程约需15-30分钟。\n\n来源：account_guide.md",
-    "开户流程": "开户流程：1.准备身份证原件 2.填写开户申请表 3.进行视频认证 4.设置交易密码 5.完成风险评估问卷。整个流程约需15-30分钟。\n\n来源：account_guide.md",
+    _RETRYABLE = (APITimeoutError, APIConnectionError, RateLimitError, InternalServerError)
+except Exception:  # pragma: no cover - openai 不可用时退化为仅超时可重试
+    _RETRYABLE = ()
+
+
+# ─── 状态 ───
+
+class AgentState(TypedDict):
+    """Supervisor 编排的全局状态。"""
+
+    messages: Annotated[list[BaseMessage], add_messages]
+    user_id: str
+    session_id: str
+    trace_id: str
+    intent: str
+    sub_results: dict[str, Any]
+    compliance_passed: bool
+    final_response: str
+    retry_count: int
+    approval_id: str | None
+    approval_decision: dict[str, Any] | None
+
+
+# ─── 路由解析 ───
+
+ROUTE_KNOWLEDGE = "knowledge_rag"
+ROUTE_TICKET = "ticket_handler"
+# compliance 类意图改走知识库：原实现直接跳合规节点，没有任何业务 Agent 产出，用户会收到空回复
+_ROUTE_ALIASES = {
+    "ticket_handler": ROUTE_TICKET,
+    "knowledge_rag": ROUTE_KNOWLEDGE,
+    "compliance_checker": ROUTE_KNOWLEDGE,
+    "compliance_check": ROUTE_KNOWLEDGE,
+    "compliance": ROUTE_KNOWLEDGE,
 }
+_VALID_ROUTES = {ROUTE_KNOWLEDGE, ROUTE_TICKET}
 
 
-def _normalize_for_cache(text: str) -> str:
-    """归一化消息用于缓存 key：去除标点、转小写、取前 50 字符"""
-    cleaned = re.sub(r'[^\w\u4e00-\u9fff]', '', text.lower())
-    return cleaned[:50]
+def parse_route(text: str) -> str:
+    """从模型自由文本中提取路由目标；无法识别时兜底 knowledge_rag。"""
+    cleaned = (text or "").strip().lower().replace("```", " ")
+    # 先匹配更具体的 ticket_handler，再匹配 knowledge_rag，最后 compliance*
+    for token in ("ticket_handler", "knowledge_rag", "compliance_checker", "compliance"):
+        if token in cleaned:
+            return _ROUTE_ALIASES.get(token, ROUTE_KNOWLEDGE)
+    return ROUTE_KNOWLEDGE
 
 
-def _check_faq(message: str) -> str | None:
-    """
-    FAQ 精确匹配早退（Q7）。
-    高频问题直接返回，不走 Agent 链路，节省 Token 和延迟。
-    """
-    normalized = _normalize_for_cache(message)
-    for key, answer in FAQ_KNOWLEDGE.items():
-        if key in normalized or normalized in key:
-            return answer
-    return None
+SUPERVISOR_SYSTEM_PROMPT = """你是一个智能客服系统的 Supervisor（主管编排 Agent）。
+
+可用的子 Agent（只返回其中之一，不要输出任何其他文字）：
+- knowledge_rag: 知识库问答 —— 产品咨询、收益率、开户/退款政策、风险说明、合规政策咨询
+- ticket_handler: 工单处理 —— 退款申请、理赔、开户办理、投诉登记、查询工单进度
+
+路由规则：
+- 咨询信息、问政策/收益/风险 → knowledge_rag
+- 要办理业务（退款/开户/理赔/投诉）或查工单 → ticket_handler
+- 涉及合规政策、监管要求 → knowledge_rag
+
+只输出一个单词：knowledge_rag 或 ticket_handler
+"""
 
 
-# ─── 超时配置 ───
-AGENT_TIMEOUT_SECONDS = 10
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return True
+    if _RETRYABLE and isinstance(exc, _RETRYABLE):
+        return True
+    return isinstance(exc, ConnectionError)
 
-# 重试配置（Q8 — 指数退避）
-MAX_RETRIES = 3
-RETRY_BASE_DELAY = 1.0  # 首次重试等待 1s，之后 2s, 4s
 
 _TIMEOUT_FALLBACKS = {
-    "knowledge_rag": "知识检索超时，已记录您的问题并将转交人工客服处理，请稍候。",
-    "ticket_handler": "工单提交超时，系统正在后台继续处理，请稍后查询。",
-    "compliance_check": None,  # 合规超时 → 按不通过处理
+    ROUTE_KNOWLEDGE: "知识检索超时，请稍后重试，或直接联系人工客服。",
+    ROUTE_TICKET: "工单服务繁忙，请稍后重试；如已提交，可用工单号查询进度。",
 }
 
 
-def _is_retryable(exc: Exception) -> bool:
-    """
-    判断异常是否可重试（Q8）。
-    超时、限流（429）、服务不可用（503/ConnectionError）可重试；
-    参数错误、认证失败等不可重试。
-    """
-    if isinstance(exc, asyncio.TimeoutError):
-        return True
-    msg = str(exc).lower()
-    retryable_keywords = (
-        "timeout", "timed out", "rate limit", "429",
-        "503", "unavailable", "connection", "temporarily",
-        "server error", "500", "too many requests",
-    )
-    return any(kw in msg for kw in retryable_keywords)
+def _wrap_with_timeout(agent_name: str, agent_func, settings: Settings = default_settings):
+    """为子 Agent 节点加超时与有界重试（指数退避 + 抖动）。"""
 
-
-def _wrap_with_timeout(agent_name: str, agent_func):
-    """
-    为子Agent节点包装超时熔断 + 指数退避重试（Q8）。
-
-    策略：
-    1. 每次尝试限时 AGENT_TIMEOUT_SECONDS
-    2. 可重试错误（超时/限流）→ 指数退避重试，最多 MAX_RETRIES 次
-    3. 重试耗尽 → 返回降级回复
-    """
     async def wrapper(state: dict[str, Any]) -> dict[str, Any]:
+        timeout = float(settings.llm_timeout_seconds)
+        max_retries = int(settings.llm_max_retries)
         attempt = 0
-        last_exc: Exception | None = None
+        last_exc: BaseException | None = None
 
-        while attempt <= MAX_RETRIES:
+        while attempt <= max_retries:
             try:
-                return await asyncio.wait_for(agent_func(state), timeout=AGENT_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError as e:
-                last_exc = e
-                attempt += 1
-                if attempt > MAX_RETRIES:
-                    break
-                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))  # 1s, 2s, 4s
-                await asyncio.sleep(delay)
-            except Exception as e:
-                last_exc = e
-                if not _is_retryable(e) or attempt >= MAX_RETRIES:
+                return await asyncio.wait_for(agent_func(state), timeout=timeout)
+            except BaseException as exc:  # noqa: BLE001 - 需要统一归类
+                last_exc = exc
+                if not _is_retryable(exc) or attempt >= max_retries:
                     break
                 attempt += 1
-                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                delay = min(8.0, 0.5 * (2 ** (attempt - 1)))
+                logger.warning("agent %s 第 %d 次重试：%s", agent_name, attempt, type(exc).__name__)
                 await asyncio.sleep(delay)
 
-        # ── 重试耗尽 → 降级回复 ──
         fallback = _TIMEOUT_FALLBACKS.get(agent_name)
         if fallback is None:
-            # 合规审查失败/超时 → 按不通过处理
+            # 合规节点失败 → 按不通过处理（fail-closed）
             return {
                 **state,
                 "compliance_passed": False,
                 "sub_results": {
                     **state.get("sub_results", {}),
-                    agent_name: f"合规审查异常（{type(last_exc).__name__}），已自动转交人工处理。",
+                    agent_name: {"passed": False, "risk_level": "high",
+                                 "violations": [f"节点异常：{type(last_exc).__name__}"]},
                 },
             }
         return {
             **state,
-            "sub_results": {
-                **state.get("sub_results", {}),
-                agent_name: fallback,
-            },
+            "sub_results": {**state.get("sub_results", {}), agent_name: fallback},
         }
+
     return wrapper
 
 
-# ─── 状态定义 ───
-
-class AgentState(TypedDict):
-    """Supervisor编排的全局状态"""
-    messages: Annotated[list[BaseMessage], add_messages]
-    user_id: str
-    session_id: str
-    intent: str
-    sub_results: dict[str, Any]
-    compliance_passed: bool
-    final_response: str
-    current_agent: str
-    retry_count: int
-
-
-# ─── Supervisor节点 ───
-
-SUPERVISOR_SYSTEM_PROMPT = """你是一个智能客服系统的Supervisor（主管编排Agent）。
-你的职责是：
-1. 分析用户意图，决定分发给哪个子Agent处理
-2. 汇总子Agent的处理结果，生成最终回复
-3. 确保所有回复都经过合规审查（合规审查是自动强制执行的，不需要你路由过去）
-
-可用的子Agent（只返回其中之一）：
-- knowledge_rag: 知识库问答 —— 产品咨询、收益率、开户流程、退款政策、风险咨询等
-- ticket_handler: 工单处理 —— 退款申请、理赔、开户办理、投诉、查工单状态等业务办理
-- compliance_checker: 合规审查 —— 仅在用户询问合规政策、监管要求、投诉举报时使用
-
-路由规则：
-- 用户咨询产品信息、问收益/风险/政策 → knowledge_rag
-- 用户要办理业务（退款/开户/理赔/投诉）或查工单 → ticket_handler
-- 用户只是问"能不能保证收益/稳赚不赔"这类问题 → knowledge_rag（知识库会给出合规回答，不要路由到 compliance_checker）
-
-根据用户消息，返回路由目标。
-"""
-
-
 class SupervisorNode:
-    """Supervisor决策节点"""
+    """路由决策、HITL 闸门与结果聚合。"""
 
-    def __init__(self, llm: ChatOpenAI, working_memory: WorkingMemory):
+    def __init__(self, llm: Any, settings: Settings = default_settings, approval_store: Any | None = None):
         self.llm = llm
-        self.working_memory = working_memory
+        self.settings = settings
+        self.approval_store = approval_store
 
     @trace_agent_call("supervisor")
     async def route_decision(self, state: AgentState) -> AgentState:
-        """
-        分析用户意图，决定路由。
-
-        优化策略（Q7）：
-        1. FAQ 早退 — 高频问题精确匹配，跳过 Agent 链路直接返回
-        2. 路由缓存 — 相同意图缓存，避免重复 LLM 调用
-        3. LLM 路由 — 兜底使用 LLM 判断意图
-        """
-        messages = state["messages"]
-        session_id = state.get("session_id", "default")
-        user_message = messages[-1].content if messages else ""
-
-        # ── 策略1: FAQ 早退（节省 ~2s LLM 调用）──
-        faq_answer = _check_faq(user_message)
-        if faq_answer:
-            return {
-                **state,
-                "intent": "compliance_checker",
-                "current_agent": "supervisor",
-                "sub_results": {
-                    **state.get("sub_results", {}),
-                    "faq_direct": faq_answer,
-                },
-            }
-
-        # ── 策略2: 路由缓存（避免重复 LLM 调用）──
-        cache_key = _normalize_for_cache(user_message)
-        now = time.time()
-
-        if cache_key in _ROUTE_CACHE:
-            cached_intent, cached_at = _ROUTE_CACHE[cache_key]
-            if now - cached_at < _ROUTE_CACHE_TTL:
-                self.working_memory.update(session_id, {"last_intent": cached_intent})
-                return {
-                    **state,
-                    "intent": cached_intent,
-                    "current_agent": "supervisor",
-                }
-            else:
-                del _ROUTE_CACHE[cache_key]
-
-        # ── 策略3: LLM 路由（兜底）──
-        context = self.working_memory.get_context(session_id)
+        messages = state.get("messages") or []
+        if not messages:
+            return {**state, "intent": ROUTE_KNOWLEDGE}
 
         routing_prompt = [
             SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
-            SystemMessage(content=f"当前工作记忆上下文: {context}"),
-            *messages,
-            HumanMessage(content=(
-                "请分析用户的最新消息，返回应该路由到的Agent名称。"
-                "只返回以下之一: knowledge_rag, ticket_handler, compliance_checker"
-            )),
+            *messages[-6:],
+            HumanMessage(content="只返回 knowledge_rag 或 ticket_handler。"),
         ]
-
         response = await self.llm.ainvoke(routing_prompt)
-        intent = response.content.strip().lower()
+        content = getattr(response, "content", "") or ""
+        intent = parse_route(content)
+        if intent not in _VALID_ROUTES:  # 防御性兜底
+            intent = ROUTE_KNOWLEDGE
+        return {**state, "intent": intent}
 
-        valid_intents = {"knowledge_rag", "ticket_handler", "compliance_checker"}
-        if intent not in valid_intents:
-            intent = "knowledge_rag"
+    @trace_agent_call("compliance_gate")
+    async def compliance_gate(self, state: AgentState) -> AgentState:
+        """HITL 闸门（T-P1-05）：合规未通过时在图内 interrupt()，等待人工审批后恢复。
 
-        # 写入缓存
-        _ROUTE_CACHE[cache_key] = (intent, now)
+        只有在注入了 approval_store 且图带 checkpointer 时才会真正中断；
+        否则原样放行，由 API 层的外部审批队列兜底（保持向后兼容）。
+        """
+        from langgraph.types import interrupt
 
-        self.working_memory.update(session_id, {"last_intent": intent})
+        if state.get("compliance_passed", True):
+            return state
+        if self.approval_store is None:
+            return state
 
+        sub_results = state.get("sub_results", {})
+        info = sub_results.get("compliance") if isinstance(sub_results.get("compliance"), dict) else {}
+        violations = list(info.get("violations", []) or [])
+        risk_level = str(info.get("risk_level", "high"))
+        agent_responses = {
+            key: value for key, value in sub_results.items()
+            if key != "compliance" and isinstance(value, str) and value.strip()
+        }
+        messages = state.get("messages") or []
+        user_message = getattr(messages[-1], "content", "") if messages else ""
+
+        record = await self.approval_store.new_request(
+            tenant_id=state.get("user_id", "anonymous"),
+            session_id=state.get("session_id", ""),
+            trace_id=state.get("trace_id", ""),
+            user_message=user_message,
+            agent_responses=agent_responses,
+            violations=violations,
+            risk_level=risk_level,
+            intent=str(state.get("intent", "unknown")),
+        )
+        decision = interrupt({
+            "approval_id": record.approval_id,
+            "reason": "compliance",
+            "violations": violations,
+            "risk_level": risk_level,
+        })
+        approved = bool(decision.get("approved")) if isinstance(decision, dict) else False
+        logger.info("HITL 决策 approval_id=%s approved=%s", record.approval_id, approved)
         return {
             **state,
-            "intent": intent,
-            "current_agent": "supervisor",
+            "approval_id": record.approval_id,
+            "approval_decision": {
+                "approved": approved,
+                "actor": str(decision.get("actor", "")) if isinstance(decision, dict) else "",
+                "reason": str(decision.get("reason", "")) if isinstance(decision, dict) else "",
+            },
+            "compliance_passed": approved,
         }
 
     @trace_agent_call("supervisor_synthesize")
     async def synthesize_response(self, state: AgentState) -> AgentState:
-        """汇总子Agent结果，生成最终回复"""
+        """聚合子结果。合规未通过时只给中性转人工提示，不编造任何单据编号。"""
         sub_results = state.get("sub_results", {})
         compliance_passed = state.get("compliance_passed", True)
+        decision = state.get("approval_decision") or {}
+        parts = [
+            value.strip()
+            for key, value in sub_results.items()
+            if key != "compliance" and isinstance(value, str) and value.strip()
+        ]
 
-        if not compliance_passed:
+        if decision.get("approved") is True:
+            # 人工放行：先清洗违规用语/PII，绝不放回原文（G3）
+            from agents.compliance_checker import sanitize_output
+
+            body = "\n\n".join(sanitize_output(part) for part in parts)
             final_response = (
-                "抱歉，您的请求涉及敏感内容，已转交人工客服处理。"
-                "工单编号已自动生成，请留意后续通知。"
+                f"✅ [人工审批通过] {body}" if body
+                else "您的请求已由人工审核通过，客服人员将尽快处理。"
+            )
+        elif decision and decision.get("approved") is False:
+            # 已有人工结论且为拒绝：明确告知未通过，不再说"转入审核中"
+            final_response = "❌ 您的请求经人工审核未通过。如有疑问，请联系人工客服。"
+        elif not compliance_passed:
+            final_response = (
+                "您的请求涉及敏感内容或需要人工确认，已转入人工审核流程。"
+                "客服人员核实后会尽快与您联系。"
             )
         else:
-            result_parts = []
-            for agent_name, result in sub_results.items():
-                # 只拼接字符串类型的子结果（跳过 compliance dict 等）
-                if isinstance(result, str) and result.strip():
-                    result_parts.append(result)
-            final_response = "\n\n".join(result_parts) if result_parts else "抱歉，暂时无法处理您的请求，请稍后重试。"
+            final_response = (
+                "\n\n".join(parts)
+                if parts
+                else "抱歉，暂时无法处理您的请求，请稍后重试或联系人工客服。"
+            )
 
         return {
             **state,
@@ -290,88 +273,85 @@ class SupervisorNode:
         }
 
 
-# ─── 路由函数 ───
-
 def route_to_agent(state: AgentState) -> str:
-    """根据意图路由到对应Agent节点"""
-    intent = state.get("intent", "knowledge_rag")
-    route_map = {
-        "knowledge_rag": "knowledge_rag",
-        "ticket_handler": "ticket_handler",
-        "compliance_checker": "compliance_check",
-    }
-    return route_map.get(intent, "knowledge_rag")
+    intent = state.get("intent", ROUTE_KNOWLEDGE)
+    return ROUTE_TICKET if intent == ROUTE_TICKET else ROUTE_KNOWLEDGE
 
 
-def should_check_compliance(state: AgentState) -> str:
-    """所有回复都需经过合规审查"""
-    return "compliance_check"
+def _build_checkpointer(settings: Settings):
+    if settings.checkpoint_backend == "sqlite":
+        try:
+            import os
+            import sqlite3
 
+            from langgraph.checkpoint.sqlite import SqliteSaver
 
-# ─── 构建Graph ───
+            os.makedirs(os.path.dirname(settings.checkpoint_path) or ".", exist_ok=True)
+            conn = sqlite3.connect(settings.checkpoint_path, check_same_thread=False)
+            logger.info("检查点后端: SQLite(%s)", settings.checkpoint_path)
+            return SqliteSaver(conn)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("SQLite 检查点不可用，回退内存: %s", exc)
+    return MemorySaver()
+
 
 def create_supervisor_graph(
-    llm: ChatOpenAI | None = None,
-    working_memory: WorkingMemory | None = None,
-    short_term_memory: ShortTermMemory | None = None,
-    long_term_memory: LongTermMemory | None = None,
+    llm: Any | None = None,
+    working_memory: Any | None = None,   # 已废弃：保留参数仅为兼容旧调用
+    short_term_memory: Any | None = None,  # 同上
+    long_term_memory: Any | None = None,
     enable_checkpointing: bool = True,
-) -> StateGraph:
-    """
-    构建Supervisor编排的多Agent StateGraph。
+    settings: Settings = default_settings,
+    approval_store: Any | None = None,
+):
+    """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
-    这是整个系统的核心入口，将4个子Agent通过有向图连接起来，
-    由Supervisor节点负责路由决策和结果汇总。
-
-    Args:
-        llm: 语言模型实例
-        working_memory: 工作记忆
-        short_term_memory: 短期记忆
-        long_term_memory: 长期记忆
-        enable_checkpointing: 是否启用检查点（支持断点恢复）
+    approval_store 与 checkpointer 同时存在时，合规失败会在图内 interrupt()，
+    审批通过后由 Command(resume=...) 恢复执行（T-P1-05）。
     """
+    from agents.compliance_checker import ComplianceCheckerAgent
+    from agents.knowledge_rag import KnowledgeRAGAgent
+    from agents.ticket_handler import TicketHandlerAgent
+
     if llm is None:
-        import os
+        from langchain_openai import ChatOpenAI
+
         llm = ChatOpenAI(
-            model=os.getenv("MODEL_NAME", "gpt-4o"),
-            temperature=0,
+            model=settings.model_name,
+            temperature=settings.temperature,
+            api_key=settings.openai_api_key or None,
+            base_url=settings.openai_base_url or None,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=0,
         )
-    if working_memory is None:
-        working_memory = WorkingMemory()
 
-    supervisor = SupervisorNode(llm, working_memory)
+    checkpointer = _build_checkpointer(settings) if enable_checkpointing else None
+    # 没有 checkpointer 就无法中断/恢复，此时不注入 store，走 API 层外部审批兜底
+    hitl_store = approval_store if checkpointer is not None else None
 
-    intent_router = IntentRouterAgent(llm)
-    knowledge_agent = KnowledgeRAGAgent(llm, long_term_memory)
+    supervisor = SupervisorNode(llm, settings, approval_store=hitl_store)
+    knowledge_agent = KnowledgeRAGAgent(llm, long_term_memory, settings=settings)
     ticket_agent = TicketHandlerAgent(llm)
     compliance_agent = ComplianceCheckerAgent(llm)
 
     graph = StateGraph(AgentState)
-
     graph.add_node("supervisor_route", supervisor.route_decision)
-    graph.add_node("knowledge_rag", _wrap_with_timeout("knowledge_rag", knowledge_agent.process))
-    graph.add_node("ticket_handler", _wrap_with_timeout("ticket_handler", ticket_agent.process))
-    graph.add_node("compliance_check", _wrap_with_timeout("compliance_check", compliance_agent.process))
+    graph.add_node("knowledge_rag", _wrap_with_timeout(ROUTE_KNOWLEDGE, knowledge_agent.process, settings))
+    graph.add_node("ticket_handler", _wrap_with_timeout(ROUTE_TICKET, ticket_agent.process, settings))
+    graph.add_node("compliance_check", _wrap_with_timeout("compliance_check", compliance_agent.process, settings))
+    graph.add_node("compliance_gate", supervisor.compliance_gate)
     graph.add_node("synthesize", supervisor.synthesize_response)
 
     graph.set_entry_point("supervisor_route")
-
     graph.add_conditional_edges(
         "supervisor_route",
         route_to_agent,
-        {
-            "knowledge_rag": "knowledge_rag",
-            "ticket_handler": "ticket_handler",
-            "compliance_check": "compliance_check",
-        },
+        {ROUTE_KNOWLEDGE: ROUTE_KNOWLEDGE, ROUTE_TICKET: ROUTE_TICKET},
     )
-
-    graph.add_edge("knowledge_rag", "compliance_check")
-    graph.add_edge("ticket_handler", "compliance_check")
-    graph.add_edge("compliance_check", "synthesize")
+    graph.add_edge(ROUTE_KNOWLEDGE, "compliance_check")
+    graph.add_edge(ROUTE_TICKET, "compliance_check")
+    graph.add_edge("compliance_check", "compliance_gate")
+    graph.add_edge("compliance_gate", "synthesize")
     graph.add_edge("synthesize", END)
 
-    checkpointer = MemorySaver() if enable_checkpointing else None
-    compiled = graph.compile(checkpointer=checkpointer)
-
-    return compiled
+    return graph.compile(checkpointer=checkpointer)

@@ -1,701 +1,193 @@
-# 智能客服多Agent系统
+# HeteroAgent · 智能客服多 Agent 系统
 
-基于 **LangGraph** + **FastAPI** 的 Supervisor 编排多 Agent 智能客服系统，支持意图路由、RAG 知识库问答、工单处理、合规审查，以及三层记忆系统和 MCP 工具协议。
+基于 **LangGraph 1.x + FastAPI** 的 Supervisor 编排式客服系统：确定性路由 → 业务 Agent（RAG 问答 / 工单）→ **强制合规审查** → 聚合回复。内置提示注入前置拦截、PII 识别与脱敏、图内中断式人工审批（HITL）与哈希链审计。
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-169%20passed-brightgreen)
+![Lint](https://img.shields.io/badge/ruff-clean-261230)
+
+![聊天界面](docs/screenshots/chat-ui.png)
+
+<details>
+<summary>API 文档截图（Swagger UI）</summary>
+
+![Swagger](docs/screenshots/swagger.png)
+
+</details>
 
 ---
 
 ## 目录
 
-- [系统架构](#系统架构)
-- [项目结构](#项目结构)
-- [核心流程](#核心流程)
-- [模块详解](#模块详解)
-  - [API 层](#1-api-层)
-  - [编排层 — Supervisor](#2-编排层--supervisor)
-  - [Agent 层](#3-agent-层)
-  - [工具层 — MCP](#4-工具层--mcp)
-  - [记忆层](#5-三层记忆系统)
-  - [可观测层](#6-可观测层)
+- [能力概览](#能力概览)
+- [架构](#架构)
 - [快速开始](#快速开始)
-- [环境变量](#环境变量)
-- [依赖栈](#依赖栈)
+- [API](#api)
+- [配置](#配置)
+- [项目结构](#项目结构)
+- [质量保障](#质量保障)
+- [设计取舍](#设计取舍)
+- [路线图](#路线图)
 
 ---
 
-## 系统架构
+## 能力概览
 
-### 分层架构图
+| 域 | 能力 |
+| --- | --- |
+| 编排 | LangGraph 固定拓扑（可预测/可审计），路由异常类型化重试，超时降级 |
+| 检索 | FAISS 向量 + BM25 混合检索 + RRF 融合；分数归一化到 [0,1]，阈值可配置 |
+| 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |
+| 安全 | 注入检测前置（NFKC/零宽对抗归一化）、API Key 鉴权、滑动窗口限流、请求体与消息长度上限 |
+| 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；哈希链审计 |
+| 记忆 | Redis 短期记忆（tiktoken 预算）+ 有界 LRU embedding 缓存；长期知识库去重与原子落盘 |
+| 观测 | OpenTelemetry GenAI 语义约定（`gen_ai.*`）、P50/P95 指标、成本累计 |
+| 评估 | 38 条版本化 Golden Set、Recall@K / MRR / nDCG / Faithfulness / Coverage、CI 可调用 |
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     API 层 (FastAPI)                          │
-│   POST /api/chat   GET /api/history   GET /api/tools         │
-│          POST /api/tools/call   GET /api/metrics             │
-├──────────────────────────────────────────────────────────────┤
-│              编排层 (LangGraph StateGraph)                    │
-│      Supervisor 路由决策 → 子 Agent 执行 → 合规 → 结果聚合     │
-├──────────────────────────────────────────────────────────────┤
-│   Agent 层                                                    │
-│  ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌──────────────┐  │
-│  │Intent    │ │Knowledge  │ │Ticket      │ │Compliance    │  │
-│  │Router    │ │RAG        │ │Handler     │ │Checker       │  │
-│  └──────────┘ └───────────┘ └────────────┘ └──────────────┘  │
-├──────────────────────────────────────────────────────────────┤
-│  工具层 (MCP — Model Context Protocol)                        │
-│   工具注册 · 工具发现 (tools/list) · 工具调用 (tools/call)     │
-├──────────────┬────────────────┬─────────────────────────────┤
-│  工作记忆     │  短期记忆      │  长期记忆                    │
-│  (进程内存)   │  (Redis)      │  (FAISS 向量库)              │
-│  请求级状态   │  会话 30min   │  持久化知识库                │
-├──────────────┴────────────────┴─────────────────────────────┤
-│              可观测层 (OpenTelemetry)                         │
-│          Span 追踪 · AgentMetrics 指标收集                    │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### 组件关系图
+## 架构
 
 ```mermaid
 graph TB
-    subgraph "API Layer"
-        FastAPI[FastAPI Server]
-        ChatAPI[POST /api/chat]
-        HistoryAPI[GET /api/history]
-        ToolsAPI[GET /api/tools]
-        MetricsAPI[GET /api/metrics]
-    end
-
-    subgraph "Orchestration Layer"
-        Supervisor[Supervisor Node]
-        Graph[LangGraph StateGraph]
-        State[AgentState]
-    end
-
-    subgraph "Agent Layer"
-        IntentRouter[IntentRouterAgent]
-        KnowledgeRAG[KnowledgeRAGAgent]
-        TicketHandler[TicketHandlerAgent]
-        ComplianceChecker[ComplianceCheckerAgent]
-    end
-
-    subgraph "Tool Layer"
-        MCP[MCPToolServer]
-        ToolReg[工具注册]
-        ToolDiscovery[工具发现 tools/list]
-        ToolCall[工具调用 tools/call]
-    end
-
-    subgraph "Memory Layer"
-        WorkingMem[工作记忆<br/>WorkingMemory]
-        ShortMem[短期记忆<br/>ShortTermMemory]
-        LongMem[长期记忆<br/>LongTermMemory]
-        Redis[(Redis)]
-        FAISS[(FAISS Vector Store)]
-    end
-
-    subgraph "Observability"
-        OTEL[OpenTelemetry Tracer]
-        Metrics[AgentMetrics]
-    end
-
-    FastAPI --> ChatAPI
-    FastAPI --> HistoryAPI
-    FastAPI --> ToolsAPI
-    FastAPI --> MetricsAPI
-
-    ChatAPI --> ShortMem
-    ChatAPI --> Graph
-    Graph --> State
-    State --> Supervisor
-
-    Supervisor --> IntentRouter
-    Supervisor --> KnowledgeRAG
-    Supervisor --> TicketHandler
-
-    KnowledgeRAG --> ComplianceChecker
-    TicketHandler --> ComplianceChecker
-    IntentRouter --> ComplianceChecker
-
-    ComplianceChecker --> Supervisor
-
-    KnowledgeRAG --> LongMem
-    LongMem --> FAISS
-    ShortMem --> Redis
-
-    Supervisor --> WorkingMem
-    ComplianceChecker --> MCP
-    TicketHandler --> MCP
-
-    MCP --> ToolReg
-    MCP --> ToolDiscovery
-    MCP --> ToolCall
-
-    OTEL -.-> Graph
-    OTEL -.-> Agents
-    Metrics --> MetricsAPI
+    C[客户端] --> GW[API 网关<br/>鉴权 / 限流 / 长度 / 注入检测]
+    GW --> R[Supervisor 路由<br/>结构化解析 + 白名单兜底]
+    R -->|知识咨询| KR[KnowledgeRAG<br/>改写 → 混合检索 → 重排 → 生成 → 自检]
+    R -->|业务办理| TH[TicketHandler<br/>工单 CRUD]
+    KR --> CC[合规审查<br/>规则引擎 + LLM 深审]
+    TH --> CC
+    CC -->|通过| SY[聚合回复]
+    CC -->|不通过| GATE{HITL 闸门}
+    GATE -->|interrupt| AQ[(审批队列<br/>Redis / 内存)]
+    AQ -->|approve / reject| GATE
+    GATE --> SY
+    SY --> C
 ```
 
----
+请求链路上的关键约束：
+
+1. **注入检测先于一切 LLM 调用**（命中即 400，不进入图）。
+2. **合规审查不可跳过**：所有子 Agent 产出都必须经过合规节点。
+3. **失败语义显式**：embedding 不可用直接抛错（`EmbeddingUnavailableError`），不生成伪向量；合规解析失败一律拦截。
+
+## 快速开始
+
+```bash
+# 1. 安装依赖（Python 3.12）
+pip install -r requirements.txt        # 运行时依赖（pyproject.toml 为区间真源）
+pip install pytest pytest-asyncio ruff fakeredis   # 开发依赖
+
+# 2. 配置
+cp .env.example .env
+#   填入 OPENAI_API_KEY / OPENAI_BASE_URL / MODEL_NAME
+
+# 3. 启动
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+#   开发时可加 --reload；生产请用 Dockerfile（多阶段、非 root、无 reload）
+
+# 4. 验证
+curl http://127.0.0.1:8000/health/live      # {"status":"live"}
+curl -X POST http://127.0.0.1:8000/api/chat ^
+  -H "Content-Type: application/json" ^
+  -d "{\"message\":\"理财产品A的收益率是多少？\",\"user_id\":\"u1\"}"
+```
+
+> 无 API Key 时服务仍可启动（`/health/live` 200），但 `/health/ready` 返回 503、`/api/chat` 明确报错——**不会**伪装成可用。
+
+浏览器打开 <http://127.0.0.1:8000/> 使用聊天界面，<http://127.0.0.1:8000/docs> 查看 OpenAPI。
+
+## API
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/chat` | 主聊天接口；合规不通过时返回 `approval_id` |
+| POST | `/api/chat/stream` | SSE 流式（阶段事件 + 最终回复） |
+| GET | `/api/chat/stream` | 兼容旧调用，已标记 deprecated |
+| GET | `/api/history/{session_id}` | 会话历史 |
+| GET | `/api/approvals` | 待审批列表 |
+| GET | `/api/approvals/{id}` | 审批详情 |
+| POST | `/api/approvals/{id}/approve` | 审批通过 → **恢复图执行**，返回清洗后的最终回复 |
+| POST | `/api/approvals/{id}/reject` | 审批拒绝 |
+| GET | `/api/approvals/audit/chain` | 审计链（含完整性校验结果） |
+| GET | `/api/metrics` | Agent 指标（P50/P95/错误率）+ 工具调用日志 |
+| POST | `/api/evaluations` | 运行 Golden Set 评估（鉴权 + 并发保护） |
+| GET | `/health/live` · `/health/ready` | 存活 / 就绪探针 |
+| GET/POST | `/api/tools` · `/api/tools/call` | 调试端点，需 `ENABLE_DEBUG_TOOL_ENDPOINTS=true` |
+
+鉴权：配置 `API_KEYS` 或 `REQUIRE_AUTH=true` 后，请求需带 `X-API-Key`。
+
+## 配置
+
+全部环境变量收敛在 [`config.py`](config.py)（46 项），常用项：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — / 官方地址 | 模型凭据，支持兼容网关 |
+| `MODEL_NAME` | `gpt-5.1` | 主模型；`LIGHT_MODEL_NAME` 可指定轻模型 |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
+| `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
+| `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1] |
+| `RERANK_ENABLED` / `RERANK_MODEL` | `false` / bge-reranker-v2-m3 | 可选交叉编码器重排 |
+| `API_KEYS` / `REQUIRE_AUTH` | 空 / `false` | 接口鉴权 |
+| `RATE_LIMIT_PER_MINUTE` | 60 | 每主体每分钟请求上限 |
+| `APPROVAL_STORE` | `memory` | 审批存储：`redis` 支持多副本 |
+| `CHECKPOINT_BACKEND` | `sqlite` | 图检查点：`sqlite` 支持重启后恢复 HITL |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | 空 | 设置后导出 OTLP，否则仅进程内 span |
+
+完整清单见 [`.env.example`](.env.example)。
 
 ## 项目结构
 
 ```
-python-impl/
-├── api/
-│   ├── __init__.py
-│   └── main.py              # FastAPI 入口，REST API + SSE 流式响应
+.
+├── api/main.py              # 应用工厂：鉴权、限流、审批、SSE、健康检查
 ├── agents/
-│   ├── __init__.py
-│   ├── supervisor.py        # Supervisor 编排 — LangGraph StateGraph
-│   ├── intent_router.py     # 意图识别与路由
-│   ├── knowledge_rag.py     # RAG 知识库问答
-│   ├── ticket_handler.py    # 工单 CRUD 与流转
-│   └── compliance_checker.py # 合规审查
-├── memory/
-│   ├── __init__.py
-│   ├── working_memory.py    # 工作记忆（进程内存）
-│   ├── short_term.py        # 短期记忆（Redis）
-│   └── long_term.py         # 长期记忆（FAISS 向量库）
-├── mcp/
-│   ├── __init__.py
-│   ├── mcp_server.py        # MCP 工具协议服务端
-│   └── tools/
-│       └── __init__.py
-├── tracing/
-│   ├── __init__.py
-│   └── otel_config.py       # OpenTelemetry 全链路追踪
-├── Dockerfile
-├── requirements.txt
-└── .env.example
+│   ├── supervisor.py        # 路由 + HITL 闸门 + 聚合 + 图构建
+│   ├── knowledge_rag.py     # 改写 → 检索 → 重排 → 生成 → 自检
+│   ├── ticket_handler.py    # 工单（解析失败不产生副作用）
+│   ├── compliance_checker.py# 规则 + LLM 两阶段审查（fail-closed）
+│   └── react_agent.py       # create_agent 工具调用工厂（P1）
+├── security/
+│   ├── injection.py         # 注入检测（归一化对抗绕过）
+│   ├── approvals.py         # 审批存储 + 哈希链审计
+│   └── limits.py            # 滑动窗口限流
+├── memory/                  # FAISS + BM25 混合检索；Redis 短期记忆
+├── tracing/                 # OpenTelemetry GenAI 语义约定
+├── evaluation/              # 评估器 + 38 条版本化数据集
+├── tooling/                 # MCP 官方 SDK 工具服务（P1）
+├── static/index.html        # 单文件聊天前端
+├── tests/                   # 169 项离线测试
+└── docs/                    # 升级方案、评估报告、截图
 ```
 
----
-
-## 核心流程
-
-### 请求处理时序图
-
-```mermaid
-sequenceDiagram
-    participant Client as 客户端
-    participant API as FastAPI
-    participant STM as 短期记忆<br/>(Redis)
-    participant Graph as LangGraph
-    participant SV as Supervisor
-    participant Agent as 子Agent
-    participant CC as 合规审查
-    participant MCP as MCP工具
-
-    Client->>API: POST /api/chat
-    API->>STM: add_message(user, session_id)
-    STM-->>API: ok
-    API->>Graph: ainvoke(initial_state)
-
-    Graph->>SV: route_decision
-    SV->>SV: LLM分析用户意图
-    SV-->>Graph: intent + current_agent
-
-    Graph->>Agent: 条件路由
-
-    alt KnowledgeRAG
-        Agent->>Agent: Query改写
-        Agent->>Agent: FAISS向量检索
-        Agent->>Agent: LLM重排序
-        Agent->>Agent: 生成回答
-    else TicketHandler
-        Agent->>Agent: LLM分析工单诉求
-        Agent->>MCP: 创建/查询工单
-        MCP-->>Agent: 工单结果
-    else ComplianceChecker only
-        Agent->>Agent: 规则引擎检查
-    end
-
-    Agent-->>Graph: sub_results
-
-    Graph->>CC: full_check(content)
-    CC->>CC: 规则引擎(PII+敏感词)
-    alt 规则通过
-        CC->>CC: LLM深度审查
-    end
-    CC-->>Graph: ComplianceResult
-
-    Graph->>SV: synthesize_response
-    SV-->>Graph: final_response
-
-    Graph-->>API: result
-    API->>STM: add_message(assistant, response)
-    API-->>Client: ChatResponse
-```
-
-### 状态图流转
-
-```mermaid
-stateDiagram-v2
-    [*] --> SupervisorRoute : 用户消息到达
-    SupervisorRoute --> KnowledgeRAG : intent=knowledge_rag
-    SupervisorRoute --> TicketHandler : intent=ticket_handler
-    SupervisorRoute --> ComplianceCheck : intent=compliance
-
-    KnowledgeRAG --> ComplianceCheck : 强制审查
-    TicketHandler --> ComplianceCheck : 强制审查
-
-    ComplianceCheck --> Synthesize : 审查通过
-    ComplianceCheck --> Synthesize : 审查不通过(脱敏/拦截)
-
-    Synthesize --> [*] : 返回final_response
-
-    note right of SupervisorRoute
-        LLM分析消息内容
-        决定路由目标
-    end note
-
-    note right of ComplianceCheck
-        规则引擎(毫秒级)
-        + LLM深度审查
-        高风险自动转人工
-    end note
-
-    note right of Synthesize
-        汇总sub_results
-        合规失败→转人工提示
-    end note
-```
-
----
-
-## 模块详解
-
-### 1. API 层
-
-FastAPI 应用，提供 5 个端点：
-
-| 端点 | 功能 |
-|------|------|
-| `POST /api/chat` | 主聊天接口，触发整个 Agent 流程 |
-| `GET /api/history/{session_id}` | 获取对话历史 |
-| `GET /api/tools` | MCP 工具发现 |
-| `POST /api/tools/call` | MCP 工具调用 |
-| `GET /api/metrics` | Agent 调用指标汇总 |
-
-lifespan 回调初始化全局组件：OpenTelemetry 追踪器、LangGraph 编排图、预置知识库文档。每个聊天请求将用户消息写入 Redis 短期记忆，调用 LangGraph 图执行，完成后将回复写回短期记忆。
-
----
-
-### 2. 编排层 — Supervisor
-
-核心是基于 `langgraph.graph.StateGraph` 的有向状态图，包含 5 个节点：
-
-```mermaid
-graph LR
-    START([User Input]) --> SR[SupervisorRoute]
-
-    SR -->|intent=knowledge_rag| KR[KnowledgeRAG]
-    SR -->|intent=ticket_handler| TH[TicketHandler]
-    SR -->|intent=compliance| CC1[ComplianceCheck]
-
-    KR --> CC2[ComplianceCheck]
-    TH --> CC2
-    CC1 --> CC2
-
-    CC2 -->|compliance_passed| SY[Synthesize]
-    CC2 -->|compliance_failed<br/>脱敏/拦截| SY
-
-    SY --> END([Final Response])
-
-    style SR fill:#4a90d9,color:#fff
-    style KR fill:#50c878,color:#fff
-    style TH fill:#f5a623,color:#fff
-    style CC1 fill:#d0021b,color:#fff
-    style CC2 fill:#d0021b,color:#fff
-    style SY fill:#4a90d9,color:#fff
-```
-
-**全局状态 `AgentState`**:
-- `messages`: 消息列表（支持 add_messages 归约操作）
-- `intent`: 当前识别的意图
-- `sub_results`: 各子 Agent 返回结果字典
-- `compliance_passed`: 合规审查是否通过
-- `final_response`: 最终回复
-- `retry_count`: 重试计数
-
-**关键设计**:
-- `SupervisorNode.route_decision` — LLM 分析用户消息，决定路由到哪个子 Agent
-- `SupervisorNode.synthesize_response` — 汇总 `sub_results` 生成最终回复；合规未通过时自动转人工
-- 所有子 Agent 执行后**强制经过合规审查**，不可跳过
-- 支持 `MemorySaver` 检查点，可用于 human-in-the-loop 断点恢复
-
----
-
-### 3. Agent 层
-
-#### 3.1 IntentRouterAgent — 意图路由
-
-- 多级意图分类：一级（咨询/投诉/交易办理/账户/合规）→ 二级（具体业务子类型）
-- 提取关键实体（订单号、产品名、金额等）
-- 输出 `IntentResult`，含置信度和建议路由目标
-- 金融特殊规则：资金安全→合规审查，退款→工单，产品咨询→知识库
-
-#### 3.2 KnowledgeRAGAgent — 知识库问答
-
-完整 RAG 流程：
-1. **Query 改写** — 口语化问题转为检索友好查询
-2. **向量检索** — 从 FAISS 语义搜索相关文档
-3. **重排序** — LLM 对候选文档按相关性排序（取 top-3）
-4. **生成回答** — 基于检索文档生成客服回复，标注来源和风险提示
-
-#### 3.3 TicketHandlerAgent — 工单处理
-
-- 工单创建、查询、状态更新
-- 内置内存版 `TicketStore`（生产环境可替换为数据库）
-- 工单号格式：`TK-YYYYMMDD-XXXXXX`
-- 6 种工单状态、4 级优先级、6 种工单类型
-- LLM 分析用户消息 → 提取工单信息 → 自动执行
-
-#### 3.4 ComplianceCheckerAgent — 合规审查
-
-```mermaid
-flowchart TD
-    A[输入待审查内容] --> B[规则引擎检查]
-    
-    B --> C{检测到违规?}
-    C -->|否| D[LLM深度审查]
-    C -->|是| E[判定风险等级]
-    
-    D --> F{LLM判定违规?}
-    F -->|否| G[✅ 审查通过]
-    F -->|是| E
-    
-    E --> H{风险等级}
-    H -->|low| I[PII脱敏 + 警告]
-    H -->|medium| I
-    H -->|high| J[拦截 + 标记人工审核]
-    H -->|critical| J
-
-    I --> K[返回 sanitized_content]
-    J --> L[转人工客服处理]
-
-    subgraph 规则引擎
-        R1[正则检测: 手机号/身份证/银行卡/邮箱]
-        R2[关键词检测: 违规金融用语]
-    end
-
-    subgraph LLM审查
-        L1[越权承诺检测]
-        L2[歧视性内容检测]
-        L3[金融监管合规]
-    end
-```
-
-两阶段审查策略：
-1. **规则引擎**（毫秒级）
-   - 正则检测 PII：手机号、身份证号、银行卡号、邮箱
-   - 关键词检测违规金融用语（"保证收益"、"零风险"等）
-2. **LLM 深度审查**（语义级）
-   - 越权承诺检测、歧视性内容、金融监管合规
-
-PII 自动脱敏（保留首尾 3 位），风险等级 low → medium → high → critical，高风险直接拦截。
-
----
-
-### 4. 工具层 — MCP
-
-```mermaid
-sequenceDiagram
-    participant Dev as 开发者
-    participant MCP as MCPToolServer
-    participant Agent as 子Agent
-    participant External as 外部系统
-
-    Note over Dev,MCP: 工具注册阶段
-    Dev->>MCP: @server.register(name, schema, handler)
-    MCP->>MCP: 注册到 _tools 字典
-    MCP-->>Dev: 注册完成
-
-    Note over Agent,MCP: 工具发现阶段
-    Agent->>MCP: list_tools(category?)
-    MCP-->>Agent: [{name, description, inputSchema}]
-
-    Note over Agent,External: 工具调用阶段
-    Agent->>MCP: call_tool(name, arguments)
-    MCP->>MCP: 查找ToolDefinition
-    alt 工具不存在
-        MCP-->>Agent: ToolCallResult(success=false, error)
-    else 工具存在
-        MCP->>External: handler(**arguments)
-        External-->>MCP: 执行结果
-        MCP-->>Agent: ToolCallResult(success=true, result, duration_ms)
-    end
-
-    Note over Agent,External: JSON-RPC 2.0 模式
-    Agent->>MCP: handle_jsonrpc({method, params, id})
-    MCP-->>Agent: {"jsonrpc":"2.0", "result":..., "id":...}
-```
-
-实现 Anthropic Model Context Protocol 标准：
-
-| 方法 | 功能 |
-|------|------|
-| `tools/list` | 工具发现，返回名称/描述/inputSchema/分类 |
-| `tools/call` | 工具调用，JSON-RPC 2.0 格式 |
-| `ping` | 健康检查 |
-
-**注册方式** — 装饰器模式：
-```python
-@server.register(name="order_query", description="...", input_schema={...}, category="order")
-async def order_query(order_id: str = "", user_id: str = "") -> dict:
-    ...
-```
-
-**预置工具**: `order_query`（订单查询）、`knowledge_search`（知识库搜索）、`ticket_create`（工单创建）、`risk_check`（风控检查）。
-
----
-
-### 5. 三层记忆系统
-
-```mermaid
-graph TB
-    subgraph "记忆系统层次"
-        direction TB
-        WM[工作记忆 WorkingMemory]
-        STM[短期记忆 ShortTermMemory]
-        LTM[长期记忆 LongTermMemory]
-    end
-
-    subgraph "存储介质"
-        RAM[(进程内存)]
-        Redis[(Redis)]
-        FAISS[(FAISS向量库)]
-        Disk[(磁盘持久化)]
-    end
-
-    subgraph "生命周期"
-        L1[单次请求]
-        L2[会话级 / TTL 30min]
-        L3[跨会话持久化]
-    end
-
-    subgraph "典型数据"
-        D1[路由上下文<br/>中间推理状态]
-        D2[最近20轮对话<br/>历史消息]
-        D3[知识库文档<br/>用户画像]
-    end
-
-    subgraph "访问频率"
-        F1[⚡ 极高 · 每次LLM调用]
-        F2[⚡ 高 · 每轮对话]
-        F3[⚡ 中 · 按需检索]
-    end
-
-    WM --> RAM
-    STM --> Redis
-    LTM --> FAISS
-    FAISS --> Disk
-
-    WM -.->|可选择导出| STM
-    STM -.->|可选择归档| LTM
-
-    RAM --> L1
-    Redis --> L2
-    FAISS --> L3
-
-    WM --> D1
-    STM --> D2
-    LTM --> D3
-
-    WM --> F1
-    STM --> F2
-    LTM --> F3
-
-    style WM fill:#e3f2fd,stroke:#1565c0
-    style STM fill:#fff3e0,stroke:#e65100
-    style LTM fill:#e8f5e9,stroke:#2e7d32
-```
-
-| 层级 | 存储后端 | 生命周期 | 核心用途 |
-|------|----------|----------|----------|
-| **工作记忆** | 进程内 dict | 单次请求 | 路由上下文、中间推理状态 |
-| **短期记忆** | Redis list | TTL 30 分钟 | 最近 20 轮对话历史 |
-| **长期记忆** | FAISS 向量库 | 持久化 | 知识库文档、语义检索 |
-
-**工作记忆** (`memory/working_memory.py`):
-- 线程安全，按 session_id 隔离
-- 最大 50 条 / session，支持导出持久化
-
-**短期记忆** (`memory/short_term.py`):
-- 懒加载 Redis 连接，连接失败自动 fallback 到进程内存
-- 滑动窗口淘汰 + TTL 自动过期
-- `get_context_window(max_tokens)` 按 token 数截取上下文
-
-**长期记忆** (`memory/long_term.py`):
-- FAISS Inner Product 索引 + 简易 hash-based embedding（生产环境可替换为 OpenAI Embedding API）
-- 文本分块策略：512 字块 + 128 字重叠，优先按段落分割
-- 检索回退：FAISS 不可用时降级为关键词搜索
-- 支持知识库目录批量加载和索引持久化
-
----
-
-### 6. 可观测层
-
-```mermaid
-flowchart LR
-    subgraph "Agent 调用"
-        A1[IntentRouter]
-        A2[KnowledgeRAG]
-        A3[TicketHandler]
-        A4[ComplianceChecker]
-        A5[Supervisor]
-    end
-
-    subgraph "Tracing"
-        T[OpenTelemetry]
-        S1[Span: agent.intent_router.classify]
-        S2[Span: agent.knowledge_rag.process]
-        S3[Span: agent.ticket_handler.process]
-        S4[Span: agent.compliance.full_check]
-        S5[Span: agent.supervisor.route_decision]
-    end
-
-    subgraph "导出后端"
-        OTLP[OTLP Collector]
-        Console[Console Exporter]
-        Jaeger[Jaeger / Zipkin]
-    end
-
-    subgraph "Metrics"
-        M[AgentMetrics]
-        MC[调用次数统计]
-        ML[平均耗时统计]
-        ME[错误率统计]
-    end
-
-    A1 & A2 & A3 & A4 & A5 -->|@trace_agent_call| T
-    T --> S1 & S2 & S3 & S4 & S5
-    T --> OTLP --> Jaeger
-    T --> Console
-    T --> M
-    M --> MC & ML & ME
-    ME -->|告警| Alert[异常告警]
-
-    style T fill:#6a1b9a,color:#fff
-    style M fill:#6a1b9a,color:#fff
-    style Alert fill:#d0021b,color:#fff
-```
-
-- **`trace_agent_call(agent_name)` 装饰器** — 为每个 Agent 方法创建 OpenTelemetry Span，记录 agent.name、duration_ms、success、error 等属性，异常时自动 recording exception
-- **AgentMetrics 指标收集器** — 按 Agent 统计调用次数、平均耗时、错误率，通过 `/api/metrics` 暴露
-- **导出后端** — 支持 OTLP (Jaeger/Zipkin) 或控制台输出
-
----
-
-## 快速开始
-
-### 前置条件
-
-- Python 3.12+
-- Redis（短期记忆，可选，自动 fallback）
-- OpenAI API Key
-
-### 安装与运行
+## 质量保障
 
 ```bash
-# 克隆项目
-git clone <repo-url>
-cd python-impl
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入 OPENAI_API_KEY
-
-# 启动服务
-python -m api.main
+python -m pytest -q          # 169 passed（全部离线，无需 API Key）
+python -m ruff check .       # All checks passed
 ```
 
-服务默认启动在 `http://localhost:8000`。
+- 测试覆盖缺陷回归（G1–G14）、安全用例（注入变体、越权、限流）、HITL 中断/恢复、检索契约（分数归一化）、评估指标手算校验。
+- CI 门禁建议：`ruff → pytest → 评估回归（阈值来自基线）`，见 [docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md) T-P2-05。
 
-### Docker
+## 设计取舍
 
-```bash
-docker build -t smart-cs-agent .
-docker run -p 8000:8000 --env-file .env smart-cs-agent
-```
+| 决策 | 理由 |
+| --- | --- |
+| 保留固定状态图而非自主 Agent 循环 | 金融客服优先可预测、可审计；重试交给框架的有界策略 |
+| 合规 fail-closed | 解析失败时放行等于没有合规；宁可转人工 |
+| 删除 hash 伪向量降级 | 静默降级会把"随机检索"伪装成可用 |
+| 审批通过前清洗违规用语 | 人工放行不等于原文可外发 |
+| 不引入向量库/图记忆（暂） | 当前瓶颈是数据正确性，不是存储 |
 
-### 测试
+## 路线图
 
-```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "理财产品A的收益率是多少？", "user_id": "user001", "session_id": "session001"}'
-```
+- [x] **P0** 正确性与安全加固（G1–G14，135 项测试）
+- [x] **P1** LangChain 1.x / 图内 HITL + 检查点 / MCP 官方 SDK / GenAI 语义约定
+- [ ] **P2** 检索质量（contextual retrieval、中文重排）、评估入 CI、AG-UI 流式、多副本
+- [ ] **P3** 按需：A2A、多模态、语义缓存、模型分级路由
 
----
-
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `OPENAI_API_KEY` | — | OpenAI API 密钥 |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 端点 |
-| `MODEL_NAME` | `gpt-4o` | 模型名称 |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接地址 |
-| `FAISS_INDEX_PATH` | `./vector_store/faiss_index` | FAISS 索引持久化路径 |
-| `OTEL_SERVICE_NAME` | `smart-cs-multi-agent` | 链路追踪服务名 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP 收集器地址 |
-| `HOST` | `0.0.0.0` | 服务监听地址 |
-| `PORT` | `8000` | 服务端口 |
-
----
-
-## 依赖栈
-
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| `langgraph` | ≥0.3.0 | Agent 编排状态图引擎 |
-| `langchain` | ≥0.3.0 | LLM 调用框架 |
-| `langchain-openai` | ≥0.3.0 | OpenAI 模型集成 |
-| `fastapi` | ≥0.115.0 | REST API 框架 |
-| `uvicorn` | ≥0.32.0 | ASGI 服务器 |
-| `redis` | ≥5.2.0 | 短期记忆缓存 |
-| `faiss-cpu` | ≥1.9.0 | 向量索引与相似度搜索 |
-| `opentelemetry-*` | ≥1.29.0 | 全链路追踪 |
-| `mcp` | ≥1.0.0 | Model Context Protocol |
-| `pydantic` | ≥2.10.0 | 数据验证 |
-| `httpx` | ≥0.28.0 | HTTP 客户端 |
-| `tiktoken` | ≥0.8.0 | Token 计数 |
-| `numpy` | ≥1.26.0 | 向量运算 |
-| `python-dotenv` | ≥1.0.0 | 环境变量加载 |
-
----
-
-## 扩展指南
-
-### 新增子 Agent
-
-1. 在 `agents/` 下创建 Agent 类，实现 `process(self, state) -> dict` 方法
-2. 在 `supervisor.py` 中注册节点和边
-3. 在 `route_to_agent` 映射表中添加路由
-4. 更新 `SupervisorNode` 的系统提示词
-
-### 新增 MCP 工具
-
-```python
-@mcp_server.register(
-    name="tool_name",
-    description="工具描述",
-    input_schema={"type": "object", "properties": {...}},
-    category="category_name",
-)
-async def my_tool(...):
-    ...
-```
-
-### 切换向量数据库
-
-`LongTermMemory` 的 FAISS 实现已预留替换接口，生产环境可切换为 Milvus、Pinecone 或 Chroma，只需实现 `search()` 和 `add_document()` 方法。
-
----
+详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)
 
 ## 许可
 
