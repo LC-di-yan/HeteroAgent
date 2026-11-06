@@ -390,6 +390,7 @@ def create_supervisor_graph(
     context_store: Any | None = None,
     checkpointer: Any | None = None,
     light_llm: Any | None = None,
+    semantic_cache: Any | None = None,
 ):
     """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
@@ -422,7 +423,8 @@ def create_supervisor_graph(
 
     supervisor = SupervisorNode(llm, settings, approval_store=hitl_store, light_llm=light_llm)
     knowledge_agent = KnowledgeRAGAgent(
-        llm, long_term_memory, settings=settings, context_store=context_store
+        llm, long_term_memory, settings=settings, context_store=context_store,
+        semantic_cache=semantic_cache,
     )
     tools = None
     # 演示模式不绑定工具：脚本化模型不实现 bind_tools，避免 create_agent 重试后返回错误文案

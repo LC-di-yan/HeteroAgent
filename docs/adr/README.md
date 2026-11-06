@@ -13,3 +13,4 @@
 | [0006](0006-layout-and-dependency-policy.md) | 暂不迁 src/ 布局；依赖区间 + 后续加锁 | 已接受 |
 | [0007](0007-transitional-dual-ticket-path.md) | 工单双实现（内存 TicketStore 与 MCP 工具）的过渡安排 | 已接受 |
 | [0008](0008-context-store-facts-only.md) | 跨会话记忆只存确定性事实，不做 LLM 抽取 | 已接受 |
+| [0009](0009-semantic-cache-scope.md) | 语义缓存只服务非个性化问题 | 已接受 |

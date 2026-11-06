@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     approval_store: Literal["redis", "memory"] = "memory"
     approval_ttl_seconds: int = 86400
 
+    # ── 语义缓存（T-P3-04）：仅缓存非个性化知识问答；默认关闭 ──
+    semantic_cache_enabled: bool = False
+    semantic_cache_threshold: float = 0.95
+    semantic_cache_ttl_seconds: int = 3600
+    semantic_cache_max_entries: int = 1000
+
+    # ── 用量预算（T-P3-04）：自然日窗口，0 表示不限制 ──
+    tenant_daily_requests: int = 0
+    tenant_daily_tokens: int = 0
+
     # ── 合规 ──
     compliance_negation_window: int = 8
 

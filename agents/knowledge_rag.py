@@ -62,12 +62,15 @@ class KnowledgeRAGAgent:
     """完整 RAG 流程：改写 → 检索 → （可选）重排 → 置信度门禁 → 生成 → 自检。"""
 
     def __init__(self, llm: Any, long_term_memory: Any | None = None,
-                 settings: Settings = default_settings, context_store: Any | None = None):
+                 settings: Settings = default_settings, context_store: Any | None = None,
+                 semantic_cache: Any | None = None):
         self.llm = llm
         self.settings = settings
         self._memory = long_term_memory
         # 跨会话用户事实（T-P2-02）：例如"该用户近期提交过退款工单 TK-..."
         self.context_store = context_store
+        # 语义缓存（T-P3-04）：只缓存非个性化回答，按租户隔离
+        self.semantic_cache = semantic_cache
         self._cross_encoder = None
         self._cross_encoder_checked = False
         self._cross_encoder_lock = asyncio.Lock()
@@ -154,6 +157,27 @@ class KnowledgeRAGAgent:
         except Exception:
             return original_query
 
+    async def _cache_embed(self, text: str) -> list[float] | None:
+        """缓存用的 embedding：优先异步接口，其次线程池跑同步实现，失败返回 None。"""
+        memory = self.memory
+        aembed = getattr(memory, "aembed", None)
+        if callable(aembed):
+            try:
+                return await aembed(text)
+            except Exception:
+                return None
+        sync_embed = getattr(memory, "_embed_sync", None)
+        if callable(sync_embed):
+            try:
+                return await asyncio.to_thread(sync_embed, text)
+            except Exception:
+                return None
+        return None
+
+    def _kb_version(self) -> str:
+        docs = getattr(self.memory, "_documents", None)
+        return str(len(docs)) if docs is not None else "0"
+
     def _user_context(self, state: dict[str, Any]) -> str:
         if self.context_store is None:
             return ""
@@ -211,6 +235,34 @@ class KnowledgeRAGAgent:
             return state
 
         original_query = getattr(messages[-1], "content", "") or ""
+        user_context = self._user_context(state)
+        tenant = str(state.get("tenant_id") or "default")
+
+        # 语义缓存：只对"非个性化"问题生效（带用户事实的请求既不读也不写缓存）
+        cache = self.semantic_cache
+        cache_usable = cache is not None and not user_context
+
+        if cache_usable:
+            try:
+                hit = await cache.lookup(
+                    original_query, tenant=tenant, kb_version=self._kb_version(),
+                    embed=self._cache_embed,
+                )
+            except Exception as exc:  # 缓存故障不应影响主链路
+                logger.warning("语义缓存查询失败: %s", type(exc).__name__)
+                hit = None
+            if hit is not None:
+                logger.info("语义缓存命中（%s, sim=%.3f）", hit.match, hit.similarity)
+                return {
+                    **state,
+                    "sub_results": {
+                        **state.get("sub_results", {}),
+                        "knowledge_rag": hit.answer,
+                        "cache": {"hit": True, "match": hit.match,
+                                  "similarity": round(hit.similarity, 4)},
+                    },
+                }
+
         try:
             rewritten = await self.rewrite_query(original_query)
             raw_docs = await self._retrieve(rewritten, top_k=self.settings.rag_top_k)
@@ -231,7 +283,16 @@ class KnowledgeRAGAgent:
 
         docs = await self._rerank(rewritten, raw_docs, top_k=self.settings.rag_rerank_top_k)
         answer = await self.generate_answer(
-            original_query, docs, user_context=self._user_context(state)
+            original_query, docs, user_context=user_context
         )
         answer = await self.self_correct(original_query, docs, answer)
+
+        if cache_usable and answer:
+            try:
+                await self.semantic_cache.store(
+                    original_query, answer, tenant=tenant, kb_version=self._kb_version(),
+                    sources=[str(d.get("source", "")) for d in docs], embed=self._cache_embed,
+                )
+            except Exception as exc:
+                logger.warning("语义缓存写入失败: %s", type(exc).__name__)
         return {**state, "sub_results": {**state.get("sub_results", {}), "knowledge_rag": answer}}

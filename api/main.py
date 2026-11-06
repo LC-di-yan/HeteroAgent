@@ -279,6 +279,7 @@ def create_app(
                     context_store=getattr(app.state, "context_store", None),
                     checkpointer=checkpointer,
                     light_llm=getattr(app.state, "light_llm", None),
+                    semantic_cache=getattr(app.state, "semantic_cache", None),
                 )
                 app.state.checkpoint_cm = checkpoint_cm
                 # 图内 HITL 需要 checkpointer 才能中断/恢复
@@ -333,6 +334,19 @@ def create_app(
     app.state.ltm = long_term_memory
     app.state.approvals = approvals or create_approval_store(st)
     app.state.metrics = AgentMetrics()
+    app.state.semantic_cache = None
+    if st.semantic_cache_enabled:
+        try:
+            from memory.semantic_cache import SemanticCache
+
+            app.state.semantic_cache = SemanticCache(
+                ttl_seconds=st.semantic_cache_ttl_seconds,
+                max_entries=st.semantic_cache_max_entries,
+                similarity_threshold=st.semantic_cache_threshold,
+            )
+            logger.info("语义缓存已启用（threshold=%.2f）", st.semantic_cache_threshold)
+        except Exception as exc:
+            logger.warning("语义缓存初始化失败: %s", exc)
     if guardrail is None:
         try:
             from security.guardrail import build_guardrail_chain
@@ -360,6 +374,14 @@ def create_app(
     else:
         app.state.context_store = None
     app.state.limiter = build_rate_limiter(st)
+    from security.budget import TenantBudget
+
+    app.state.budget = TenantBudget(
+        daily_requests=st.tenant_daily_requests, daily_tokens=st.tenant_daily_tokens
+    )
+    if st.tenant_daily_requests or st.tenant_daily_tokens:
+        logger.info("用量预算：requests=%s tokens=%s（每自然日）",
+                    st.tenant_daily_requests or "不限", st.tenant_daily_tokens or "不限")
     app.state.eval_lock = asyncio.Lock()
 
     if app.state.ltm is None:
@@ -468,6 +490,15 @@ def create_app(
     async def _run_chat(message: str, user_id: str, session_id: str | None) -> dict[str, Any]:
         graph = _require_graph()
         await _guard_message(message)
+
+        # 用量预算（T-P3-04）：请求计数在入口扣，token 在拿到回复后补记
+        budget = app.state.budget.consume(user_id)
+        if not budget.allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"已超出当日用量配额（{budget.reason}），请于 {budget.reset_at:.0f} 后重试",
+                headers=budget.headers(),
+            )
         session_id = session_id or str(uuid.uuid4())
         trace_id = uuid.uuid4().hex
         await app.state.stm.add_message(session_id, "user", message)
@@ -568,6 +599,9 @@ def create_app(
         final_response = result.get("final_response", "")
         if not final_response:
             raise HTTPException(status_code=502, detail="系统未产出回复")
+        app.state.budget.add_tokens(
+            request.user_id, count_tokens(request.message) + count_tokens(final_response)
+        )
         await app.state.stm.add_message(run["session_id"], "assistant", final_response)
         return ChatResponse(
             response=final_response,
