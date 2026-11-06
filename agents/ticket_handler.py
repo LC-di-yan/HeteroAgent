@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime
 from enum import StrEnum
@@ -120,10 +121,14 @@ class TicketStore:
 class TicketHandlerAgent:
     """工单处理Agent"""
 
+    _TICKET_RE = re.compile(r"TK-\d{8}-[A-F0-9]{6}")
+
     def __init__(self, llm: ChatOpenAI, ticket_store: TicketStore | None = None,
-                 tools: list[Any] | None = None, enable_tool_calling: bool = True):
+                 tools: list[Any] | None = None, enable_tool_calling: bool = True,
+                 context_store: Any | None = None):
         self.llm = llm
         self.ticket_store = ticket_store or TicketStore()
+        self.context_store = context_store
         self._tool_agent = None
         if enable_tool_calling and tools:
             # T-P1-07：模型支持 tool calling 时，工单动作交给 create_agent 的工具循环，
@@ -218,6 +223,18 @@ class TicketHandlerAgent:
             f"我们将尽快处理您的请求，请保存好工单号以便后续查询。"
         )
 
+    def _remember_ticket(self, user_id: str, text: str) -> None:
+        """把工单号写入用户级事实（T-P2-02），供后续会话直接引用。"""
+        if self.context_store is None:
+            return
+        match = self._TICKET_RE.search(text or "")
+        if not match:
+            return
+        try:
+            self.context_store.put_fact(user_id, "ticket", match.group(0))
+        except Exception as exc:  # 记忆写入失败不影响主流程
+            logger.warning("用户事实写入失败: %s", type(exc).__name__)
+
     @trace_agent_call("ticket_query")
     async def query_ticket(self, ticket_id: str) -> str:
         """查询工单状态"""
@@ -288,6 +305,7 @@ class TicketHandlerAgent:
         if self._tool_agent is not None:
             tool_answer = await self._process_with_tools(last_message)
             if tool_answer:
+                self._remember_ticket(user_id, tool_answer)
                 return {**state, "sub_results": {
                     **state.get("sub_results", {}), "ticket_handler": tool_answer}}
 
@@ -302,6 +320,7 @@ class TicketHandlerAgent:
                 result = await self.query_ticket(ticket_info["ticket_id"])
             else:
                 result = await self.create_ticket(ticket_info, user_id)
+                self._remember_ticket(user_id, result)
 
         return {
             **state,

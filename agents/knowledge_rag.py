@@ -62,10 +62,12 @@ class KnowledgeRAGAgent:
     """完整 RAG 流程：改写 → 检索 → （可选）重排 → 置信度门禁 → 生成 → 自检。"""
 
     def __init__(self, llm: Any, long_term_memory: Any | None = None,
-                 settings: Settings = default_settings):
+                 settings: Settings = default_settings, context_store: Any | None = None):
         self.llm = llm
         self.settings = settings
         self._memory = long_term_memory
+        # 跨会话用户事实（T-P2-02）：例如"该用户近期提交过退款工单 TK-..."
+        self.context_store = context_store
         self._cross_encoder = None
         self._cross_encoder_checked = False
         self._cross_encoder_lock = asyncio.Lock()
@@ -152,21 +154,31 @@ class KnowledgeRAGAgent:
         except Exception:
             return original_query
 
+    def _user_context(self, state: dict[str, Any]) -> str:
+        if self.context_store is None:
+            return ""
+        try:
+            return self.context_store.format_for_prompt(str(state.get("user_id") or "anonymous"))
+        except Exception as exc:  # 记忆读取失败不影响回答
+            logger.warning("用户事实读取失败: %s", type(exc).__name__)
+            return ""
+
     @trace_agent_call("rag_generate")
-    async def generate_answer(self, query: str, context_docs: list[dict]) -> str:
+    async def generate_answer(self, query: str, context_docs: list[dict],
+                              user_context: str = "") -> str:
         if not context_docs:
             return "抱歉，知识库中暂未找到与您问题相关的信息。建议您联系人工客服获取帮助。"
         context = "\n\n---\n\n".join(
             f"来源: {doc.get('source', '未知')}\n内容: {doc.get('content', '')}"
             for doc in context_docs
         )
+        human = f"用户问题: {query}\n\n检索到的参考文档:\n{context}"
+        if user_context:
+            human = f"{user_context}\n\n{human}"
         # tags 用于流式输出筛选：只有最终答案的 token 才推给前端，
         # 查询改写/自检的中间 token 不应出现在用户界面上（T-P2-06）。
         response = await self.llm.ainvoke(
-            [
-                SystemMessage(content=RAG_SYSTEM_PROMPT),
-                HumanMessage(content=f"用户问题: {query}\n\n检索到的参考文档:\n{context}"),
-            ],
+            [SystemMessage(content=RAG_SYSTEM_PROMPT), HumanMessage(content=human)],
             config={"tags": ["final_answer"]},
         )
         return (getattr(response, "content", "") or "").strip()
@@ -218,6 +230,8 @@ class KnowledgeRAGAgent:
             return {**state, "sub_results": {**state.get("sub_results", {}), "knowledge_rag": answer}}
 
         docs = await self._rerank(rewritten, raw_docs, top_k=self.settings.rag_rerank_top_k)
-        answer = await self.generate_answer(original_query, docs)
+        answer = await self.generate_answer(
+            original_query, docs, user_context=self._user_context(state)
+        )
         answer = await self.self_correct(original_query, docs, answer)
         return {**state, "sub_results": {**state.get("sub_results", {}), "knowledge_rag": answer}}

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     rerank_enabled: bool = False
     # 工具调用：模型支持 bind_tools 时，业务动作走 tool_calls（T-P1-07）
     tool_calling_enabled: bool = True
+    # 跨会话用户事实（T-P2-02）：工单号等确定性事实，写入 LangGraph Store
+    context_store_enabled: bool = True
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
 
     # ── Redis / 短期记忆 ──

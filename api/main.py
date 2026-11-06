@@ -260,6 +260,7 @@ def create_app(
                     long_term_memory=app.state.ltm,
                     settings=st,
                     approval_store=app.state.approvals,
+                    context_store=getattr(app.state, "context_store", None),
                 )
                 # 图内 HITL 需要 checkpointer 才能中断/恢复
                 app.state.hitl_enabled = getattr(app.state.graph, "checkpointer", None) is not None
@@ -320,6 +321,16 @@ def create_app(
         except Exception as exc:  # 工具服务不可用时不影响主链路
             logger.warning("工具网关初始化失败: %s", exc)
     app.state.mcp = mcp_server
+    if st.context_store_enabled:
+        try:
+            from memory.context_store import ContextStore
+
+            app.state.context_store = ContextStore()
+        except Exception as exc:
+            logger.warning("用户事实存储初始化失败: %s", exc)
+            app.state.context_store = None
+    else:
+        app.state.context_store = None
     app.state.limiter = build_rate_limiter(st)
     app.state.eval_lock = asyncio.Lock()
 
@@ -731,6 +742,18 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Deprecation": "true"},
         )
+
+    @app.get("/api/users/{user_id}/facts")
+    async def user_facts(user_id: str, principal: str = Depends(auth)):
+        """查看某用户的跨会话事实（运维/客服排查用）。"""
+        store = getattr(app.state, "context_store", None)
+        if store is None:
+            raise HTTPException(status_code=503, detail="用户事实存储未启用")
+        facts = store.get_facts(user_id)
+        return {
+            "user_id": user_id,
+            "facts": [{"kind": f.kind, "value": f.value, "created_at": f.created_at} for f in facts],
+        }
 
     # ── 历史 ──
 

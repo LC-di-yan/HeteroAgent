@@ -335,6 +335,7 @@ def create_supervisor_graph(
     enable_checkpointing: bool = True,
     settings: Settings = default_settings,
     approval_store: Any | None = None,
+    context_store: Any | None = None,
 ):
     """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
@@ -363,7 +364,9 @@ def create_supervisor_graph(
     hitl_store = approval_store if checkpointer is not None else None
 
     supervisor = SupervisorNode(llm, settings, approval_store=hitl_store)
-    knowledge_agent = KnowledgeRAGAgent(llm, long_term_memory, settings=settings)
+    knowledge_agent = KnowledgeRAGAgent(
+        llm, long_term_memory, settings=settings, context_store=context_store
+    )
     tools = None
     if getattr(settings, "tool_calling_enabled", True):
         try:
@@ -372,7 +375,7 @@ def create_supervisor_graph(
             tools = build_tools()
         except Exception as exc:  # 工具集不可用不影响主链路
             logger.warning("工具集加载失败: %s", exc)
-    ticket_agent = TicketHandlerAgent(llm, tools=tools)
+    ticket_agent = TicketHandlerAgent(llm, tools=tools, context_store=context_store)
     compliance_agent = ComplianceCheckerAgent(llm)
 
     graph = StateGraph(AgentState)
