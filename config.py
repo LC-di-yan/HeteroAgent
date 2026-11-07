@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     temperature: float = 0.0
     llm_timeout_seconds: float = 30.0
     llm_max_retries: int = 2
+    # Responses API（支持推理项与更稳定的结构化输出；供应商不支持时自动忽略）
+    use_responses_api: bool = False
+    # 推理强度：low / medium / high（空=不传；仅推理模型有效）
+    reasoning_effort: str = ""
+    # 提示词缓存槽位：相同前缀落到同一缓存（供应商支持时生效）
+    prompt_cache_key: str = ""
+    # 流式响应回传 usage；关闭会导致成本统计静默归零
+    stream_usage: bool = True
 
     # ── Embedding ──
     embedding_model: str = "text-embedding-3-small"

@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 316 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 325 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -37,7 +37,7 @@
 | T-P1-01 | 依赖与结构迁移 | 🟡 | `pyproject.toml` + 依赖区间 ✅；**未迁 `src/`、无 `uv.lock`**（本机装不上 uv，见 ADR-0006） |
 | T-P1-02 | 编排 1.x | 🟡 | 保留确定性 StateGraph（ADR-0001）；工具调用走 `create_agent`（`agents/react_agent.py`），未整体替换 Supervisor |
 | T-P1-03 | 结构化输出 | ✅ | `agents/schemas.py` + `agents/llm_utils.py`；路由 / 工单 / 合规三处接入；`tests/test_structured_output.py` |
-| T-P1-04 | 模型接入 | 🟡 | `agents/llm_factory.py` 支持主/轻模型；**未接 Responses API、无 prompt caching** |
+| T-P1-04 | 模型接入 | 🟡 | `agents/provider.py` 支持 Responses API 开关、推理强度、prompt cache 槽位、stream_usage；参数按运行时签名过滤。**仍无真实供应商验证** |
 | T-P1-05 | 检查点 + HITL | ✅ | `interrupt()` / `Command(resume)`；`AsyncSqliteSaver` / `AsyncPostgresSaver`；ADR-0005 |
 | T-P1-06 | MCP 官方 SDK | ✅ | `tooling/`；`mcp/` 已改名消除遮蔽；1.x/2.x 双兼容；`tests/test_mcp.py`（14 项） |
 | T-P1-07 | 工具接入 Agent 链路 | 🟡 | 工单动作由 `tool_calls` 驱动（`agents/toolset.py`）；**知识检索仍直接调检索层，未走 `knowledge_search` 工具** |
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 316 项
+python -m pytest -q                     # 325 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）

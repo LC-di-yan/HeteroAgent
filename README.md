@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-316%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-325%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -141,6 +141,8 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | --- | --- | --- |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — / 官方地址 | 模型凭据，支持兼容网关 |
 | `MODEL_NAME` / `LIGHT_MODEL_NAME` | `gpt-5.1` / 空 | 主模型用于生成与合规；轻模型仅用于路由（空=复用主模型） |
+| `USE_RESPONSES_API` / `STREAM_USAGE` | `false` / `true` | Responses API 与流式 usage 回传（供应商不支持时参数自动忽略） |
+| `PROMPT_CACHE_KEY` / `REASONING_EFFORT` | 空 / 空 | 提示词缓存槽位、推理强度（可选） |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
 | `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
 | `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1]；用 `make calibrate` 在标注集上校准 |
@@ -166,6 +168,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 │   ├── knowledge_rag.py     # 改写 → 检索 → 重排 → 生成 → 自检
 │   ├── ticket_handler.py    # 工单（解析失败不产生副作用）
 │   ├── compliance_checker.py# 规则 + LLM 两阶段审查（fail-closed）
+│   ├── provider.py          # 模型接入层（Responses API / 参数签名过滤 / stream_usage）
 │   ├── llm_factory.py       # 主/轻模型分级（路由走轻模型）
 │   ├── react_agent.py       # create_agent 工具调用工厂
 │   └── demo_mode.py         # 离线演示：脚本化模型 + 关键字知识库
@@ -181,14 +184,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 316 项离线测试
+├── tests/                   # 325 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 316 passed（全部离线，无需 API Key）
+python -m pytest -q          # 325 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
