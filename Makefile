@@ -17,7 +17,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := install
 
-.PHONY: install run dev test lint format cov hooks check docker-build compose-up compose-down eval eval-all route-eval calibrate
+.PHONY: install run dev test lint format cov hooks check docker-build compose-up compose-down eval eval-all route-eval trajectory-eval calibrate
 
 # 安装运行时依赖 + 开发工具（比 CI 多装 pytest-cov，供 cov 目标使用）
 # 等价命令：python -m pip install -r requirements.txt pytest pytest-asyncio pytest-cov ruff
@@ -95,6 +95,11 @@ eval-all:
 # 等价命令：python -m evaluation.route_eval
 route-eval:
 	$(PY) -m evaluation.route_eval
+
+# 执行轨迹评估：验证 路由→业务→合规→闸门→聚合 的路径没被改坏
+# 等价命令：python -m evaluation.trajectory_eval
+trajectory-eval:
+	$(PY) -m evaluation.trajectory_eval
 
 # 校准检索阈值：在标注集上扫描最优值，与当前配置对比
 # 等价命令：python -m evaluation.calibrate --threshold $(RAG_THRESHOLD)

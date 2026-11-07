@@ -8,6 +8,7 @@
 用法：
     python -m evaluation.run                  # 离线：route + compliance
     python -m evaluation.run --with-retrieval # 追加检索评估（需可用 embedding）
+    python -m evaluation.run --with-trajectory # 追加执行轨迹（离线）
     python -m evaluation.run --out report.json --json
 退出码：0 = 全部达标；1 = 有维度低于阈值（供 CI 使用）。
 """
@@ -33,6 +34,7 @@ class Thresholds:
     compliance_fpr_max: float = 0.05    # 误杀率上限 5%
     retrieval_recall_at_5_min: float = 0.80
     retrieval_mrr_min: float = 0.60
+    trajectory_accuracy_min: float = 0.99
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -56,6 +58,12 @@ def _check(report: dict, thresholds: Thresholds) -> list[str]:
     if fpr is not None and fpr > thresholds.compliance_fpr_max:
         violations.append(f"合规误杀率 {fpr} > 阈值 {thresholds.compliance_fpr_max}")
 
+    trajectory = report.get("trajectory") or {}
+    if trajectory.get("accuracy") is not None and trajectory["accuracy"] < thresholds.trajectory_accuracy_min:
+        violations.append(
+            f"轨迹准确率 {trajectory['accuracy']} < 阈值 {thresholds.trajectory_accuracy_min}"
+        )
+
     retrieval = report.get("retrieval")
     if retrieval and retrieval.get("metrics"):
         rm = retrieval["metrics"]
@@ -67,7 +75,31 @@ def _check(report: dict, thresholds: Thresholds) -> list[str]:
     return violations
 
 
-async def build_report(*, with_retrieval: bool = False, llm=None, memory=None) -> dict:
+async def _trajectory_report() -> dict:
+    """用演示模式图跑轨迹用例（完全离线，验证图接线是否被改坏）。"""
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from evaluation.trajectory_eval import _build_demo_graph, evaluate_trajectories
+    from tracing.otel_config import install_provider, reset_tracing
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    install_provider(provider)
+    try:
+        graph = _build_demo_graph()
+        report = await evaluate_trajectories(graph, exporter=exporter)
+    except Exception as exc:  # 轨迹评估失败不应拖垮整份报告
+        return {"total": 0, "accuracy": None, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        reset_tracing()
+    return report.to_dict()
+
+
+async def build_report(*, with_retrieval: bool = False, with_trajectory: bool = False,
+                       llm=None, memory=None) -> dict:
     from agents.compliance_checker import ComplianceCheckerAgent
 
     route = (await evaluate_routes(keyword_baseline_router)).to_dict()
@@ -86,10 +118,13 @@ async def build_report(*, with_retrieval: bool = False, llm=None, memory=None) -
             except Exception as exc:  # 检索不可用不应让整份报告失败
                 retrieval = {"skipped": True, "reason": f"{type(exc).__name__}: {exc}"}
 
+    trajectory = (await _trajectory_report()) if with_trajectory else None
+
     return {
         "route": route,
         "compliance": compliance,
         "retrieval": retrieval,
+        "trajectory": trajectory,
         "thresholds": DEFAULT_THRESHOLDS.__dict__,
     }
 
@@ -104,7 +139,8 @@ async def _main(args) -> int:  # noqa: ANN001
         except Exception as exc:  # pragma: no cover - 依赖环境
             print(f"[warn] 向量库不可用，跳过检索评估: {exc}", file=sys.stderr)
 
-    report = await build_report(with_retrieval=args.with_retrieval, memory=memory)
+    report = await build_report(with_retrieval=args.with_retrieval,
+                                with_trajectory=args.with_trajectory, memory=memory)
     violations = _check(report, DEFAULT_THRESHOLDS)
     report["violations"] = violations
     report["passed"] = not violations
@@ -125,6 +161,12 @@ def _human_summary(report: dict, violations: list[str]) -> str:
     lines.append(
         f"合规   漏放 {c['fn']} | 误杀 {c['fp']} | precision {m['precision']} | recall {m['recall']}"
     )
+    trajectory = report.get("trajectory")
+    if trajectory and trajectory.get("accuracy") is not None:
+        lines.append(
+            f"轨迹   准确率 {trajectory['accuracy']:.2%} "
+            f"({trajectory.get('passed', 0)}/{trajectory.get('total', 0)})"
+        )
     retrieval = report.get("retrieval")
     if retrieval and retrieval.get("metrics"):
         rm = retrieval["metrics"]
@@ -141,6 +183,8 @@ def _human_summary(report: dict, violations: list[str]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="HeteroAgent 统一评估")
     parser.add_argument("--with-retrieval", action="store_true", help="追加检索维度（需向量库）")
+    parser.add_argument("--with-trajectory", action="store_true",
+                        help="追加执行轨迹维度（离线，跑演示模式图）")
     parser.add_argument("--out", default="", help="把 JSON 报告写入文件")
     parser.add_argument("--json", action="store_true", help="直接输出 JSON")
     args = parser.parse_args()
