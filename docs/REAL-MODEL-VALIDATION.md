@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 供应商 | OpenAI 兼容代理 `token-api.matvenus.com/v1` |
+| 供应商 | OpenAI 兼容第三方代理（端点与凭据仅存本地 `.env`，不入库） |
 | 模型 | `glm-5.3-flash`（主/轻同模型） |
 | 可用模型 | kimi-k3.1-pro / glm-5.3 / deepseek-v4.1-flash-261017 / glm-5.3-flash |
 | Embedding | **不可用**（代理仅提供聊天模型） |
