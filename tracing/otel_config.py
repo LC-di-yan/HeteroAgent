@@ -881,7 +881,9 @@ class AgentMetrics:
     届时本类降级为纯调试输出。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, bridge: Any | None = None) -> None:
+        # 可选的 OTel 指标桥（tracing/metrics_otel.py）：接入后指标可跨副本聚合
+        self._bridge = bridge
         self._lock = threading.Lock()
         self._call_counts: dict[str, int] = {}
         self._total_duration: dict[str, float] = {}
@@ -891,6 +893,10 @@ class AgentMetrics:
         self._tokens_by_agent: dict[str, dict[str, Any]] = {}
 
     # ── 写入 ──
+    def attach_otel(self, bridge: Any | None) -> None:
+        """接入（或替换）OTel 指标桥；传 None 表示只用进程内统计。"""
+        self._bridge = bridge
+
     def record_call(self, agent_name: str, duration_ms: float, success: bool) -> None:
         with self._lock:
             self._call_counts[agent_name] = self._call_counts.get(agent_name, 0) + 1
@@ -898,6 +904,11 @@ class AgentMetrics:
             self._durations.setdefault(agent_name, []).append(duration_ms)
             if not success:
                 self._error_counts[agent_name] = self._error_counts.get(agent_name, 0) + 1
+        if self._bridge is not None:
+            try:
+                self._bridge.record_call(agent_name, duration_ms, success)
+            except Exception:  # 遥测失败不影响主流程
+                pass
 
     def record_tokens(
         self,
@@ -923,6 +934,11 @@ class AgentMetrics:
                 entry["output_tokens"] += ot
                 entry["total_tokens"] += it + ot
                 entry["cost_usd"] = round(entry["cost_usd"] + cost, 10)
+        if self._bridge is not None:
+            try:
+                self._bridge.record_tokens(key, it, ot, cost)
+            except Exception:
+                pass
 
     # ── 读取 ──
     @staticmethod

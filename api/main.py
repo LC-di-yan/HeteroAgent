@@ -244,6 +244,22 @@ def create_app(
             sampler_name=st.otel_traces_sampler,
             console_export=st.otel_console_export,
         )
+        # OTel Metrics：接入后指标可跨副本聚合（未启用时用进程内统计）
+        if st.otel_metrics_enabled:
+            try:
+                from tracing.metrics_otel import setup_metrics
+
+                bridge = setup_metrics(
+                    service_name=st.otel_service_name,
+                    otlp_endpoint=st.otel_exporter_otlp_endpoint or "",
+                    interval_ms=st.otel_metrics_interval_ms,
+                )
+                if bridge is not None:
+                    app.state.metrics.attach_otel(bridge)
+                else:
+                    logger.warning("OTel Metrics 未启用：缺少 OTLP endpoint")
+            except Exception as exc:
+                logger.warning("OTel Metrics 初始化失败，保持进程内指标: %s", exc)
         set_global_metrics(app.state.metrics)
 
         if app.state.llm is None:

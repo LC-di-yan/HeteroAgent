@@ -105,7 +105,11 @@ scrape_configs:
     # 端点默认需要鉴权；要么配置 METRICS_PUBLIC=true，要么加 bearer/header 注入
 ```
 
-主要指标：`heteroagent_agent_calls_total`、`heteroagent_agent_errors_total`、
+**多副本**：`/metrics` 只反映当前副本。要让指标跨副本聚合，设 `OTEL_METRICS_ENABLED=true`
+并用 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 collector（默认 60s 推送一次，`OTEL_METRICS_INTERVAL_MS` 可调），
+由 collector 统一暴露给 Prometheus。
+
+进程内视图的指标：`heteroagent_agent_calls_total`、`heteroagent_agent_errors_total`、
 `heteroagent_agent_duration_ms{quantile="0.5|0.95|0.99"}`、`heteroagent_llm_tokens_total{direction}`、
 `heteroagent_llm_cost_usd_total`、`heteroagent_cost_usd_total`。
 

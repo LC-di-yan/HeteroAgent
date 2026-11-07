@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = ""
     otel_traces_sampler: str = "parentbased_always_on"
     otel_console_export: bool = False
+    # OTel Metrics（跨副本聚合）：配置了 OTLP endpoint 才启用
+    otel_metrics_enabled: bool = False
+    otel_metrics_interval_ms: int = 60000
 
     # ── Prometheus 文本端点：默认需鉴权，集群抓取可按需放开 ──
     metrics_public: bool = False
