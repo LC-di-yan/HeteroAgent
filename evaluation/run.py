@@ -141,6 +141,12 @@ async def _main(args) -> int:  # noqa: ANN001
 
     report = await build_report(with_retrieval=args.with_retrieval,
                                 with_trajectory=args.with_trajectory, memory=memory)
+
+    if getattr(args, "emit_eval_events", False):
+        from tracing.eval_link import record_report
+
+        written = record_report(report, dataset=getattr(args, "dataset", "") or "default")
+        report["evaluation_events"] = written
     violations = _check(report, DEFAULT_THRESHOLDS)
     report["violations"] = violations
     report["passed"] = not violations
@@ -187,6 +193,8 @@ def main() -> None:
                         help="追加执行轨迹维度（离线，跑演示模式图）")
     parser.add_argument("--out", default="", help="把 JSON 报告写入文件")
     parser.add_argument("--json", action="store_true", help="直接输出 JSON")
+    parser.add_argument("--emit-eval-events", action="store_true",
+                        help="把指标以 gen_ai.evaluation.result span 写入 trace 流")
     args = parser.parse_args()
     raise SystemExit(asyncio.run(_main(args)))
 

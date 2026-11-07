@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-336%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-344%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -52,7 +52,7 @@
 | 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；聊天界面内可直接通过/拒绝；哈希链审计 |
 | 记忆 | Redis 短期记忆 + 跨会话用户事实（LangGraph Store，org/user 隔离）+ 有界 LRU embedding 缓存；可选语义缓存 |
 | 成本 | 主/轻模型分级、每用户自然日预算硬上限（requests/tokens）、用量响应头 |
-| 观测 | OTel GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 导出、JSON 结构化日志（request_id 贯穿） |
+| 观测 | OTel GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 导出、JSON 结构化日志（request_id 贯穿）、评估结果回挂 trace |
 | 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集 + 30 条路由标注集 + 执行轨迹用例；`python -m evaluation.run --with-trajectory` 统一门禁（非 0 退出码） |
 
 ## 架构
@@ -178,20 +178,20 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 │   ├── approvals.py         # 审批存储 + 哈希链审计
 │   └── limits.py            # 滑动窗口限流
 ├── memory/                  # FAISS + BM25 混合检索、Contextual Retrieval、用户事实存储；Redis 短期记忆
-├── tracing/                 # OpenTelemetry GenAI 语义约定
+├── tracing/                 # OTel GenAI 语义约定、指标导出、评估回挂
 ├── events/                  # 流式事件编码（legacy / AG-UI）
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 336 项离线测试
+├── tests/                   # 344 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 336 passed（全部离线，无需 API Key）
+python -m pytest -q          # 344 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）

@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 336 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 344 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- | --- | --- |
 | P0 正确性与安全 | 11 | 11 | 0 | 0 | 0 |
 | P1 规范对齐 | 9 | 6 | 3 | 0 | 0 |
-| P2 能力现代化 | 8 | 3 | 3 | 2 | 0 |
+| P2 能力现代化 | 8 | 4 | 2 | 2 | 0 |
 | P3 按需扩展 | 6 | 1 | 0 | 0 | 5 |
 
 ---
@@ -44,14 +44,14 @@
 | T-P1-08 | GenAI 语义约定 | ✅ | `tracing/otel_config.py`；`tests/test_tracing.py`（15 项） |
 | T-P1-09 | 文档与 ADR | ✅ | 8 条 ADR + README + CONTRIBUTING + CHANGELOG + 本文件 |
 
-## P2 — 能力现代化（3 ✅ / 3 🟡 / 2 ⏸）
+## P2 — 能力现代化（4 ✅ / 2 🟡 / 2 ⏸）
 
 | ID | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | T-P2-01 | 检索质量 | 🟡 | Contextual Retrieval ✅（`memory/ingest.py`）、CJK 混合分词 ✅、阈值校准工具 ✅（`evaluation/calibrate.py`）；**重排默认关闭**（缺真实 embedding 分布） |
 | T-P2-02 | 记忆分域 | ✅ | `memory/context_store.py`，org/user 命名空间；ADR-0008 |
 | T-P2-03 | 向量库后端 | ⏸ | 需先评估数据量；当前 FAISS 足够 |
-| T-P2-04 | 评估体系 | 🟡 | 路由 / 合规 / 检索 / **执行轨迹** 指标 ✅（`evaluation/trajectory_eval.py`，从 span 还原阶段序列）；**`gen_ai.evaluation.result` 回挂 trace 未做** |
+| T-P2-04 | 评估体系 | ✅ | 路由 / 合规 / 检索 / 执行轨迹指标；`evaluation/trajectory_eval.py` 从 span 还原阶段序列；`tracing/eval_link.py` 把指标以 `gen_ai.evaluation.result` span 回挂 trace（`--emit-eval-events`） |
 | T-P2-05 | CI 门禁 | ⏸ | 模板 `docs/ci/ci.yml.example` 就绪；GitHub token 缺 `workflow` scope 无法推送。已用本地 pre-commit 兜底（`make hooks`） |
 | T-P2-06 | 流式与前端协议 | ✅ | 节点级 + token 级 SSE；AG-UI 子集（`events/agui.py`，⚠ 未对照官方 SDK 复核字段） |
 | T-P2-07 | 工程与多副本 | 🟡 | compose / redis 限流 / redis 审批 ✅；**指标仍为进程内** |
@@ -72,7 +72,7 @@
 
 ## 已知缺口（按影响排序）
 
-1. **真实链路未验证**：无 API Key，LLM/embedding 全部用假模型或演示模式测试；`RAG_CONFIDENCE_THRESHOLD=0.30` 是理论值。
+1. **真实链路未验证**：无 API Key，LLM/embedding 全部用假模型或演示模式测试；`RAG_CONFIDENCE_THRESHOLD=0.30` 是理论值。评估回挂的 span 也只在进程内可见，接入 OTLP 后才有跨服务关联价值。
 2. **CI 未启用**：仅本地 pre-commit 生效。
 3. **工单双存储**：MCP 工具路径与内存 `TicketStore` 降级路径互不可见（ADR-0007）。
 4. **AG-UI 字段未复核**：官方 SDK 源码不可达，接入真实客户端前需核对。
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 336 项
+python -m pytest -q                     # 344 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）
