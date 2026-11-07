@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-344%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-340%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -184,14 +184,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 344 项离线测试
+├── tests/                   # 340 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 344 passed（全部离线，无需 API Key）
+python -m pytest -q          # 340 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）

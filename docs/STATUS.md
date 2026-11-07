@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 344 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 340 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 344 项
+python -m pytest -q                     # 340 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）
