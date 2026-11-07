@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     light_model_name: str = ""          # 空 → 复用 model_name
     temperature: float = 0.0
     llm_timeout_seconds: float = 30.0
+    # 节点级超时：RAG 节点串行发起 改写→embedding→重排→生成→自检 共 5 次网络调用，
+    # 沿用单次 LLM 的 30s 会误判超时。留空（0）则按 llm_timeout_seconds × 3 推导。
+    agent_node_timeout_seconds: float = 0.0
     llm_max_retries: int = 2
     # Responses API（支持推理项与更稳定的结构化输出；供应商不支持时自动忽略）
     use_responses_api: bool = False

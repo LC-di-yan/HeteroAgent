@@ -115,7 +115,10 @@ def _wrap_with_timeout(agent_name: str, agent_func, settings: Settings = default
     """为子 Agent 节点加超时与有界重试（指数退避 + 抖动）。"""
 
     async def wrapper(state: dict[str, Any]) -> dict[str, Any]:
-        timeout = float(settings.llm_timeout_seconds)
+        # 节点内可能串行多次调用（RAG: 改写→检索→重排→生成→自检），
+        # 因此节点预算必须大于单次 LLM 超时，否则会把正常链路误判为超时。
+        configured = float(getattr(settings, "agent_node_timeout_seconds", 0.0) or 0.0)
+        timeout = configured if configured > 0 else float(settings.llm_timeout_seconds) * 3
         max_retries = int(settings.llm_max_retries)
         attempt = 0
         last_exc: BaseException | None = None
