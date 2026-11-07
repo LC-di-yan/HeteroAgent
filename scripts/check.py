@@ -17,10 +17,10 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _run(cmd: list[str], label: str) -> bool:
+def _run(cmd: list[str], label: str, cwd: str | None = None) -> bool:
     print(f"[check] {label}: {' '.join(cmd)}", flush=True)
     started = time.perf_counter()
-    proc = subprocess.run(cmd, cwd=ROOT)
+    proc = subprocess.run(cmd, cwd=cwd or ROOT)
     elapsed = time.perf_counter() - started
     if proc.returncode == 0:
         print(f"[check] {label} 通过（{elapsed:.1f}s）", flush=True)
@@ -32,6 +32,10 @@ def _run(cmd: list[str], label: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     fast = "--fast" in args
+    # --root 便于测试：对指定目录跑检查，而不是仓库本身
+    root = ROOT
+    if "--root" in args:
+        root = args[args.index("--root") + 1]
     skip_tests = fast or os.getenv("SKIP_TESTS", "").lower() in {"1", "true", "yes"}
 
     steps: list[tuple[list[str], str]] = [
@@ -46,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for cmd, label in steps:
         try:
-            ok = _run(cmd, label)
+            ok = _run(cmd, label, cwd=root)
         except FileNotFoundError:
             print(f"[check] 找不到 {label}，请先安装开发依赖", flush=True)
             return 1

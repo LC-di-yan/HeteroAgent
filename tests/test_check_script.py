@@ -8,12 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_check_script_fast_mode_passes():
+def test_check_script_fast_mode_passes(tmp_path):
+    """用 --root 指向干净的临时目录，避免依赖仓库当前 lint 状态。"""
     import os
 
+    (tmp_path / "clean.py").write_text("x = 1\n", encoding="utf-8")
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     proc = subprocess.run(
-        [sys.executable, "scripts/check.py", "--fast"],
+        [sys.executable, "scripts/check.py", "--fast", "--root", str(tmp_path)],
         cwd=ROOT, capture_output=True, text=True, timeout=120,
         encoding="utf-8", errors="replace", env=env,
     )
