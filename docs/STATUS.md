@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 368 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 384 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -48,7 +48,7 @@
 
 | ID | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| T-P2-01 | 检索质量 | ✅ | Contextual Retrieval、CJK 混合分词；**阈值已用真实分布校准 0.30→0.53**（准确率 84.38%→90.62%）；**API 重排已启用**（`memory/rerank_api.py`，bge-reranker-v2-m3） |
+| T-P2-01 | 检索质量 | ✅ | 120 篇语料 + 263 条用例基准；修复 BM25 相对归一化导致的门禁失效（TN 1→10）；阈值校准 0.44（准确率 97.65%）；重排实测 Recall@1 +13.75pp。详见 [RETRIEVAL-ANALYSIS](RETRIEVAL-ANALYSIS.md) |
 | T-P2-02 | 记忆分域 | ✅ | `memory/context_store.py`，org/user 命名空间；ADR-0008 |
 | T-P2-03 | 向量库后端 | ⏸ | 需先评估数据量；当前 FAISS 足够 |
 | T-P2-04 | 评估体系 | ✅ | 路由 / 合规 / 检索 / 执行轨迹指标；`evaluation/trajectory_eval.py` 从 span 还原阶段序列；`tracing/eval_link.py` 把指标以 `gen_ai.evaluation.result` span 回挂 trace（`--emit-eval-events`） |
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 368 项
+python -m pytest -q                     # 384 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）

@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-368%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -53,7 +53,7 @@
 | 记忆 | Redis 短期记忆 + 跨会话用户事实（LangGraph Store，org/user 隔离）+ 有界 LRU embedding 缓存；可选语义缓存 |
 | 成本 | 主/轻模型分级、每用户自然日预算硬上限（requests/tokens）、用量响应头 |
 | 观测 | OTel GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 导出、JSON 结构化日志（request_id 贯穿）、评估结果回挂 trace |
-| 评估 | 38 条 Golden Set（Recall@K / MRR / nDCG / Faithfulness / Coverage）+ 20 条合规标注集 + 30 条路由标注集 + 执行轨迹用例；`python -m evaluation.run --with-trajectory` 统一门禁（非 0 退出码） |
+| 评估 | 263 条检索用例（120 篇语料）+ 20 条合规 + 30 条路由 + 执行轨迹；`make kb-bench` 出 Recall@K/MRR/nDCG/重排 A/B；`make eval` 统一门禁 |
 
 ## 架构
 
@@ -186,17 +186,18 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── events/                  # 流式事件编码（legacy / AG-UI）
 ├── evaluation/              # 评估器、路由/合规评估、阈值校准、38 条数据集
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
+├── knowledge_base/          # 120 篇合成演示语料（产品/账户/售后各 40）
 ├── persistence/             # 统一工单仓储（MCP 工具 + 降级路径共用）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 368 项离线测试
+├── tests/                   # 384 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 368 passed（全部离线，无需 API Key）
+python -m pytest -q          # 384 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
@@ -226,7 +227,8 @@ python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 
 变更历史见 [CHANGELOG.md](CHANGELOG.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)，
 逐任务完成情况见 [docs/STATUS.md](docs/STATUS.md)（对照方案 T-P0-01…T-P3-06）；
-真实模型验证结论见 [docs/REAL-MODEL-VALIDATION.md](docs/REAL-MODEL-VALIDATION.md)。
+真实模型验证结论见 [docs/REAL-MODEL-VALIDATION.md](docs/REAL-MODEL-VALIDATION.md)；
+大规模检索基准见 [docs/RETRIEVAL-BENCHMARK.md](docs/RETRIEVAL-BENCHMARK.md) 与 [归因分析](docs/RETRIEVAL-ANALYSIS.md)。
 
 ## 许可
 

@@ -158,6 +158,23 @@ def rrf_fuse(
     return fused
 
 
+def bm25_to_unit(raw: float, k: float = 20.0) -> float:
+    """BM25 原始分 → [0,1) 的**绝对**映射：s/(s+k)。
+
+    与 min-max 的关键区别：不依赖同批结果里其他文档的分数，
+    因此"只有一条弱命中"不会被抬成 1.0。k 控制保守程度：
+    k=20 时 s=9→0.31、s=33→0.62、s=100→0.83。
+    """
+    try:
+        s = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(s) or s <= 0.0:
+        return 0.0
+    kk = float(k) if k and float(k) > 0 else 20.0
+    return s / (s + kk)
+
+
 def to_unit_score(value: Any) -> float:
     """把任意相似度分数裁剪/转换为 [0, 1]（NaN / Inf / 非法值 -> 0.0）。
 
@@ -182,8 +199,11 @@ class BM25Index:
 
     K1 = 1.5
     B = 0.75
+    #: 饱和常数：score = s/(s+k)。k 越大越保守（弱匹配得分越低）。
+    SATURATION_K = 20.0
 
-    def __init__(self) -> None:
+    def __init__(self, saturation_k: float | None = None) -> None:
+        self.saturation_k = float(saturation_k) if saturation_k else self.SATURATION_K
         self._order: list[str] = []
         self._tokens: dict[str, list[str]] = {}
         self._tf: dict[str, dict[str, int]] = {}
@@ -274,19 +294,22 @@ class BM25Index:
         if not scored:
             return []
 
-        # min-max 归一化到 [0,1]：BM25 原始分数无上界，必须与向量余弦同量纲，
-        # 否则 knowledge_rag 的 0.30 置信度阈值会永远失效或永远转人工。
-        raw_scores = [entry[0] for entry in scored]
-        low, high = min(raw_scores), max(raw_scores)
-        span = high - low
-
+        # 绝对饱和归一化 s/(s+k)，而非 min-max。
+        #
+        # 为什么不用 min-max：它是**相对**归一化——首条恒为 1.0，单条命中时
+        # span=0 也直接记 1.0。实测中"帮我写一段Python爬虫代码"这种完全无关的
+        # 查询，只因某个中文 bigram偶然命中就拿到 score=1.0（最高置信度），
+        # 彻底架空了 knowledge_rag 的阈值门禁。
+        #
+        # s/(s+k) 是绝对映射：同样的原始分永远得到同样的归一化分，
+        # 弱匹配（s≈9）→ 0.31，强匹配（s≈33）→ 0.62，不会虚高到 1.0。
         results: list[dict] = []
         for raw_score, _position, doc_id in scored[: max(int(top_k), 0)]:
             doc = doc_lookup.get(doc_id)
             if doc is None:
                 continue
             item = dict(doc)
-            item["score"] = 1.0 if span <= 1e-12 else float((raw_score - low) / span)
+            item["score"] = bm25_to_unit(float(raw_score), self.saturation_k)
             item["bm25_score"] = float(raw_score)  # 原始 BM25 分（调试/排序用）
             results.append(item)
         return results

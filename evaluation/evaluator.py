@@ -336,6 +336,9 @@ class EvalCase:
             return True
         if self.expected_source in (CONVERSATION_SOURCE, OUT_OF_SCOPE_SOURCE):
             return False
+        # knowledge_base 相对路径（products/p01_xxx.md）视为有金标签
+        if self.expected_source.endswith(".md") and "/" in self.expected_source:
+            return True
         return bool(self.expected_keywords or self.expected_content)
 
 
@@ -393,10 +396,13 @@ class GoldenSet:
         if not query:
             raise ValueError(f"数据集第 {line_no} 行缺少 query 字段")
         expected_source = str(obj.get("expected_source", "") or "").strip()
-        if expected_source and expected_source not in ALLOWED_SOURCES:
+        # 除内置 3 篇与两个特殊标签外，允许 knowledge_base/ 下的相对路径
+        # （形如 products/p01_xxx.md），以支持大规模语料评估。
+        is_kb_path = expected_source.endswith(".md") and "/" in expected_source
+        if expected_source and expected_source not in ALLOWED_SOURCES and not is_kb_path:
             raise ValueError(
                 f"数据集第 {line_no} 行 expected_source 非法: {expected_source}"
-                f"（允许: {', '.join(ALLOWED_SOURCES)}）"
+                f"（允许: {', '.join(ALLOWED_SOURCES)} 或 knowledge_base 相对路径 *.md）"
             )
         keywords = obj.get("expected_keywords") or []
         if isinstance(keywords, str):

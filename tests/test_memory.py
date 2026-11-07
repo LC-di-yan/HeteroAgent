@@ -241,15 +241,35 @@ class TestScoreContract:
         assert 0.0 <= results[account_id]["score"] <= 1.0
 
     def test_bm25_channel_scores_normalized(self, tmp_path, embedder):
+        """BM25 分数必须是**绝对**映射，不能因批次内相对位置虚高到 1.0。
+
+        回归：曾用 min-max，导致首条恒为 1.0、单条弱命中也记 1.0，
+        使无关查询（如"写段爬虫代码"）拿到最高置信度、架空阈值门禁。
+        """
+        from memory.long_term import bm25_to_unit
+
         ltm = make_ltm(tmp_path, embedder)
         for content, source in CORPUS:
             ltm.add_document(content, source=source)
         hits = ltm._bm25_search("怎么退钱", top_k=10)
         assert hits
-        assert all(0.0 <= h["score"] <= 1.0 for h in hits)
+        assert all(0.0 <= h["score"] < 1.0 for h in hits)   # 严格小于 1
         assert all(h["bm25_score"] > 0.0 for h in hits)
-        assert max(h["score"] for h in hits) == pytest.approx(1.0)
-        assert min(h["score"] for h in hits) == pytest.approx(0.0)
+        # 每条的归一化分只由它自己的原始分决定
+        for h in hits:
+            assert h["score"] == pytest.approx(bm25_to_unit(h["bm25_score"]), abs=1e-9)
+        # 原始分越高，归一化分越高（单调）
+        ordered = sorted(hits, key=lambda x: x["bm25_score"])
+        scores = [h["score"] for h in ordered]
+        assert scores == sorted(scores)
+
+    def test_bm25_single_weak_hit_not_max_confidence(self, tmp_path, embedder):
+        """单条弱命中不得记 1.0——这是 min-max 归一化的核心缺陷。"""
+        ltm = make_ltm(tmp_path, embedder)
+        ltm.add_document("退款政策说明", source="a.md")
+        hits = ltm._bm25_search("退款", top_k=5)
+        assert hits
+        assert hits[0]["score"] < 0.5   # 短文档弱匹配，远低于满分
 
     def test_to_unit_score_helper(self):
         assert to_unit_score(1.7) == 1.0

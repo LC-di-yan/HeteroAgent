@@ -17,7 +17,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := install
 
-.PHONY: install run dev test lint format cov hooks check ci docker-build compose-up compose-down eval eval-all route-eval trajectory-eval calibrate
+.PHONY: install run dev test lint format cov hooks check ci docker-build compose-up compose-down eval eval-all route-eval trajectory-eval calibrate kb-stats kb-golden kb-bench
 
 # 安装运行时依赖 + 开发工具（比 CI 多装 pytest-cov，供 cov 目标使用）
 # 等价命令：python -m pip install -r requirements.txt pytest pytest-asyncio pytest-cov ruff
@@ -110,3 +110,18 @@ trajectory-eval:
 # 等价命令：python -m evaluation.calibrate --threshold $(RAG_THRESHOLD)
 calibrate:
 	$(PY) -m evaluation.calibrate --threshold $(or $(RAG_THRESHOLD),0.30)
+
+# 知识库规模统计（篇数/分类/字数分布）
+# 等价命令：python -c "from memory.kb_loader import *; print(corpus_stats(load_documents()))"
+kb-stats:
+	$(PY) -c "import json; from memory.kb_loader import load_documents, corpus_stats; print(json.dumps(corpus_stats(load_documents()), ensure_ascii=False, indent=2))"
+
+# 从知识库生成评估集（每篇 2 条用户问法 + 难负例 + 寒暄）
+# 等价命令：python -m evaluation.build_golden --out evaluation/datasets/v2.jsonl
+kb-golden:
+	$(PY) -m evaluation.build_golden --out evaluation/datasets/v2.jsonl --per-doc 2 --concurrency 5
+
+# 检索基准：Recall@K/MRR/nDCG + 分类拆解 + 重排 A/B + 阈值扫描
+# 等价命令：python -m evaluation.retrieval_bench --rerank-ab --out var/bench.json
+kb-bench:
+	$(PY) -m evaluation.retrieval_bench --rerank-ab --out var/bench.json
