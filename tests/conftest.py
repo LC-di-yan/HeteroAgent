@@ -62,3 +62,18 @@ def _isolate_knowledge_backend():
     reset_knowledge_backend()
     yield
     reset_knowledge_backend()
+
+@pytest.fixture(autouse=True)
+def _isolate_ticket_repo():
+    """隔离 tooling.server 的全局工单仓储，避免测试间互相污染。"""
+    try:
+        from persistence.ticket_repo import set_default_repo
+        from tooling.server import set_ticket_repo
+    except Exception:
+        yield
+        return
+    set_ticket_repo(None)
+    set_default_repo(None)
+    yield
+    set_ticket_repo(None)
+    set_default_repo(None)

@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 346 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 354 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -74,7 +74,7 @@
 
 1. **真实链路未验证**：无 API Key，LLM/embedding 全部用假模型或演示模式测试；`RAG_CONFIDENCE_THRESHOLD=0.30` 是理论值。评估回挂的 span 也只在进程内可见，接入 OTLP 后才有跨服务关联价值。
 2. **CI 未启用**：仅本地 pre-commit 生效。
-3. **工单双存储**：MCP 工具路径与内存 `TicketStore` 降级路径互不可见（ADR-0007）。
+3. ~~工单双存储~~：已偿还（`persistence/ticket_repo.py` 统一仓储，ADR-0007 已关闭）。
 4. **AG-UI 字段未复核**：官方 SDK 源码不可达，接入真实客户端前需核对。
 5. **指标不跨副本**：`/metrics` 数据来自单进程。
 6. **语义缓存为进程内实现**：多副本需换 Redis 版；`kb_version` 用文档数近似（ADR-0009）。
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 346 项
+python -m pytest -q                     # 354 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）

@@ -83,12 +83,22 @@ TICKET_SYSTEM_PROMPT = """你是一个专业的工单处理Agent，负责处理�
 
 
 class TicketStore:
-    """内存工单存储（生产环境应替换为数据库）"""
+    """工单存储适配器。
 
-    def __init__(self):
+    传入 repo（TicketRepository）时委托给共享仓储——与 MCP 工具路径共用同一实例，
+    偿还 ADR-0007 的双存储分裂。未传入时保持旧的进程内行为（测试/演示兼容）。
+    """
+
+    def __init__(self, repo: Any | None = None):
+        self._repo = repo
         self._tickets: dict[str, dict] = {}
 
     def create(self, ticket_type: str, priority: str, summary: str, details: str, user_id: str) -> dict:
+        if self._repo is not None:
+            return self._repo.create(
+                ticket_type=ticket_type, priority=priority,
+                summary=summary, details=details, user_id=user_id,
+            )
         ticket_id = f"TK-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         ticket = {
             "ticket_id": ticket_id,
@@ -105,12 +115,18 @@ class TicketStore:
         return ticket
 
     def query(self, ticket_id: str) -> dict | None:
+        if self._repo is not None:
+            return self._repo.get(ticket_id)
         return self._tickets.get(ticket_id)
 
     def query_by_user(self, user_id: str) -> list[dict]:
+        if self._repo is not None:
+            return self._repo.query_by_user(user_id)
         return [t for t in self._tickets.values() if t["user_id"] == user_id]
 
     def update_status(self, ticket_id: str, status: str) -> dict | None:
+        if self._repo is not None:
+            return self._repo.update_status(ticket_id, status)
         ticket = self._tickets.get(ticket_id)
         if ticket:
             ticket["status"] = status

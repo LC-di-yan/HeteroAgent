@@ -276,6 +276,18 @@ def create_app(
                 logger.warning("轻模型初始化失败，路由复用主模型: %s", exc)
                 app.state.light_llm = app.state.llm
 
+        # 统一工单仓储：MCP 工具路径与降级路径共用同一实例（偿还 ADR-0007）
+        try:
+            from persistence.ticket_repo import TicketRepository
+            from tooling.server import set_ticket_repo
+
+            app.state.ticket_repo = TicketRepository()
+            set_ticket_repo(app.state.ticket_repo)
+            logger.info("工单仓储已统一（MCP 工具 + 降级路径共用）")
+        except Exception as exc:
+            logger.warning("工单仓储初始化失败，两条路径各自独立: %s", exc)
+            app.state.ticket_repo = None
+
         if app.state.graph is None and app.state.llm is not None:
             try:
                 from agents.supervisor import create_supervisor_graph, open_async_checkpointer
@@ -297,6 +309,7 @@ def create_app(
                     checkpointer=checkpointer,
                     light_llm=getattr(app.state, "light_llm", None),
                     semantic_cache=getattr(app.state, "semantic_cache", None),
+                    ticket_repo=getattr(app.state, "ticket_repo", None),
                 )
                 app.state.checkpoint_cm = checkpoint_cm
                 # 图内 HITL 需要 checkpointer 才能中断/恢复

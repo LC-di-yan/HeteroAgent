@@ -102,10 +102,21 @@ def reset_knowledge_backend() -> None:
     _KNOWLEDGE_BACKEND = None
 
 
-# 幂等工单存储：idempotency_key → 工单结果
+# 工单仓储：启动时注入共享 TicketRepository，未注入时用模块级 dict（演示/测试）
+_TICKET_REPO: Any = None
 _TICKETS_BY_KEY: dict[str, dict] = {}
 _TICKETS_BY_ID: dict[str, dict] = {}
 _TICKET_LOCK = threading.Lock()
+
+
+def set_ticket_repo(repo: Any) -> None:
+    """注入共享工单仓储（persistence.ticket_repo.TicketRepository）。"""
+    global _TICKET_REPO
+    _TICKET_REPO = repo
+
+
+def get_ticket_repo() -> Any:
+    return _TICKET_REPO
 
 _HAN_RE = re.compile(r"[\u4e00-\u9fff]+")
 _ASCII_RE = re.compile(r"[a-zA-Z0-9]+")
@@ -241,6 +252,13 @@ async def ticket_create(
         dict: 含 success、ticket_id、status="created"、priority、category、
               created_at、idempotent_replay（是否为幂等重放）。
     """
+    # 优先走共享仓储（与降级路径共用同一实例，偿还 ADR-0007）
+    if _TICKET_REPO is not None:
+        return _TICKET_REPO.create(
+            title=title, description=description, ticket_type=category,
+            priority=priority, idempotency_key=idempotency_key,
+        )
+
     key = (idempotency_key or "").strip() or None
     with _TICKET_LOCK:
         if key and key in _TICKETS_BY_KEY:

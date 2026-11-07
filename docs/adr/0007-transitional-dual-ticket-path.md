@@ -1,6 +1,6 @@
 # 0007. 工单双实现（内存 TicketStore 与 MCP 工具）的过渡安排
 
-- 状态：已接受（临时）
+- 状态：已偿还（2026-11-07）
 - 日期：2026-11-06
 - 相关：`agents/ticket_handler.py`、`tooling/server.py`，方案 T-P1-07 / T-P2-03
 
@@ -20,8 +20,10 @@ T-P1-07 把工单动作接到 `create_agent` 的工具循环，工具实现来�
 
 - 正面：升级期间不破坏既有测试与降级能力。
 - 负面：存在两套存储，跨路径查询不一致（工具建的工单在 TicketStore 里查不到）。
-- 偿还计划：T-P2-03 把 `TicketStore` 换成数据库实现，并让 MCP 工具与 Agent 共用同一仓储层，
-  随后删除内存实现。在此之前，生产部署应始终启用工具调用（默认开启）。
+- 偿还记录（2026-11-07）：新增 `persistence/ticket_repo.py`（统一 TicketRepository），
+  启动时注入到 MCP 工具（`set_ticket_repo`）与降级路径（`TicketStore(repo=...)`），
+  两条路径共用同一实例。8 项回归测试验证跨路径可见性。
+  生产环境替换为 DB 实现时只需换 TicketRepository 这一个类。
 
 ## 备选方案
 

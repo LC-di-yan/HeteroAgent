@@ -391,6 +391,7 @@ def create_supervisor_graph(
     checkpointer: Any | None = None,
     light_llm: Any | None = None,
     semantic_cache: Any | None = None,
+    ticket_repo: Any | None = None,
 ):
     """构建 Supervisor 编排图（5 节点语义 + HITL 闸门）。
 
@@ -435,7 +436,12 @@ def create_supervisor_graph(
             tools = build_tools()
         except Exception as exc:  # 工具集不可用不影响主链路
             logger.warning("工具集加载失败: %s", exc)
-    ticket_agent = TicketHandlerAgent(llm, tools=tools, context_store=context_store)
+    from agents.ticket_handler import TicketStore
+
+    ticket_agent = TicketHandlerAgent(
+        llm, ticket_store=TicketStore(repo=ticket_repo),
+        tools=tools, context_store=context_store,
+    )
     compliance_agent = ComplianceCheckerAgent(llm)
 
     graph = StateGraph(AgentState)
