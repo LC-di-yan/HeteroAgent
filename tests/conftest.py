@@ -11,10 +11,25 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# 测试期间禁止真实网络调用与真实数据目录
-os.environ.setdefault("OPENAI_API_KEY", "")
-os.environ.setdefault("REQUIRE_AUTH", "false")
-os.environ.setdefault("OTEL_CONSOLE_EXPORT", "false")
+# 测试期间禁止真实网络调用与真实数据目录。
+# 用赋值而非 setdefault：本地 .env 可能配了真实凭据/开关，
+# 测试必须与开发者的本地配置隔离，否则结果不可复现。
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["REQUIRE_AUTH"] = "false"
+os.environ["OTEL_CONSOLE_EXPORT"] = "false"
+os.environ["DEMO_MODE"] = "false"
+os.environ["STRUCTURED_OUTPUT_ENABLED"] = "true"
+os.environ["SEMANTIC_CACHE_ENABLED"] = "false"
+os.environ["OTEL_METRICS_ENABLED"] = "false"
+
+# config.settings 是模块级单例，可能在导入时已读过 .env；这里重建一次
+try:
+    import config as _config
+
+    _config.get_settings.cache_clear()
+    _config.settings = _config.Settings()
+except Exception:  # pragma: no cover
+    pass
 
 
 class FakeLLM:

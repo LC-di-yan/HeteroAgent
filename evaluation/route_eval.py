@@ -191,11 +191,13 @@ async def evaluate_routes(router: RouterFn, cases: list[RouteCase] | None = None
 
 async def _main(router_name: str) -> int:
     if router_name == "llm":
-        import os
+        from dotenv import load_dotenv
 
-        from langchain_openai import ChatOpenAI
+        load_dotenv()
+        from agents.provider import build_chat_model
+        from config import Settings
 
-        llm = ChatOpenAI(model=os.getenv("MODEL_NAME", "gpt-5.1"), temperature=0)
+        llm = build_chat_model(Settings(), tier="light")
         router = make_llm_router(llm)
     else:
         router = keyword_baseline_router

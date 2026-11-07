@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 354 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 357 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -8,7 +8,7 @@
 | 阶段 | 任务数 | ✅ | 🟡 | ⏸ | ⛔ |
 | --- | --- | --- | --- | --- | --- |
 | P0 正确性与安全 | 11 | 11 | 0 | 0 | 0 |
-| P1 规范对齐 | 9 | 6 | 3 | 0 | 0 |
+| P1 规范对齐 | 9 | 7 | 2 | 0 | 0 |
 | P2 能力现代化 | 8 | 5 | 1 | 2 | 0 |
 | P3 按需扩展 | 6 | 1 | 0 | 0 | 5 |
 
@@ -30,14 +30,14 @@
 | T-P0-10 | 异步边界修复 | ✅ | `asearch` + `asyncio.to_thread`；`tests/test_memory.py` |
 | T-P0-11 | 容器与运行时快修 | ✅ | `Dockerfile`：多阶段、非 root、HEALTHCHECK、无 `--reload` |
 
-## P1 — 规范对齐（6 ✅ / 3 🟡）
+## P1 — 规范对齐（7 ✅ / 2 🟡）
 
 | ID | 任务 | 状态 | 说明与证据 |
 | --- | --- | --- | --- |
 | T-P1-01 | 依赖与结构迁移 | 🟡 | `pyproject.toml` + 依赖区间 ✅；**未迁 `src/`、无 `uv.lock`**（本机装不上 uv，见 ADR-0006） |
 | T-P1-02 | 编排 1.x | 🟡 | 保留确定性 StateGraph（ADR-0001）；工具调用走 `create_agent`（`agents/react_agent.py`），未整体替换 Supervisor |
 | T-P1-03 | 结构化输出 | ✅ | `agents/schemas.py` + `agents/llm_utils.py`；路由 / 工单 / 合规三处接入；`tests/test_structured_output.py` |
-| T-P1-04 | 模型接入 | 🟡 | `agents/provider.py` 支持 Responses API 开关、推理强度、prompt cache 槽位、stream_usage；参数按运行时签名过滤。**仍无真实供应商验证** |
+| T-P1-04 | 模型接入 | ✅ | `agents/provider.py` 支持 Responses API 开关、推理强度、prompt cache 槽位、stream_usage；参数按运行时签名过滤。**已用真实供应商验证**（glm-5.3-flash，见 REAL-MODEL-VALIDATION.md）；新增 `STRUCTURED_OUTPUT_ENABLED` 应对不支持 response_format 的代理 |
 | T-P1-05 | 检查点 + HITL | ✅ | `interrupt()` / `Command(resume)`；`AsyncSqliteSaver` / `AsyncPostgresSaver`；ADR-0005 |
 | T-P1-06 | MCP 官方 SDK | ✅ | `tooling/`；`mcp/` 已改名消除遮蔽；1.x/2.x 双兼容；`tests/test_mcp.py`（14 项） |
 | T-P1-07 | 工具接入 Agent 链路 | ✅ | 工单动作由 `tool_calls` 驱动；知识检索经 `knowledge_search` 工具（后端在启动时注入真实向量库，失败自动回退直连）；两条链路都有 `execute_tool` span |
@@ -72,7 +72,7 @@
 
 ## 已知缺口（按影响排序）
 
-1. **真实链路未验证**：无 API Key，LLM/embedding 全部用假模型或演示模式测试；`RAG_CONFIDENCE_THRESHOLD=0.30` 是理论值。评估回挂的 span 也只在进程内可见，接入 OTLP 后才有跨服务关联价值。
+1. **真实链路已部分验证**（2026-11-07，见 [REAL-MODEL-VALIDATION.md](REAL-MODEL-VALIDATION.md)）：真实 LLM 路由 96.67%、工具调用生效、合规审查语义级识别越权承诺。**仍缺 embedding**（所用代理只有聊天模型），故 `RAG_CONFIDENCE_THRESHOLD=0.30` 仍是理论值、重排仍未开启。
 2. **CI 未启用**：仅本地 pre-commit 生效。
 3. ~~工单双存储~~：已偿还（`persistence/ticket_repo.py` 统一仓储，ADR-0007 已关闭）。
 4. **AG-UI 字段未复核**：官方 SDK 源码不可达，接入真实客户端前需核对。
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 354 项
+python -m pytest -q                     # 357 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）

@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+_warned_unsupported = False
+
 
 async def run_structured[SchemaT: BaseModel](
     llm: Any,
@@ -21,6 +23,16 @@ async def run_structured[SchemaT: BaseModel](
     返回 None 表示"该模型/该次调用不支持结构化"，调用方应走文本解析兜底；
     结构化调用本身抛错时同样返回 None（不吞掉业务异常，只降级）。
     """
+    # 显式关闭：部分 OpenAI 兼容代理不支持 response_format，
+    # 尝试会白白多一次失败请求（翻倍延迟与成本），直接走文本兜底。
+    try:
+        from config import settings as _settings
+
+        if not getattr(_settings, "structured_output_enabled", True):
+            return None
+    except Exception:  # 配置不可用时保持原行为
+        pass
+
     factory = getattr(llm, "with_structured_output", None)
     if not callable(factory):
         return None
@@ -39,7 +51,17 @@ async def run_structured[SchemaT: BaseModel](
     try:
         out = await model.ainvoke(messages)
     except Exception as exc:  # 结构化调用失败 → 交回调用方兜底
-        logger.warning("结构化调用失败(%s): %s", label or schema.__name__, type(exc).__name__)
+        # 只告警一次：不支持结构化的代理会让每次调用都失败，刷屏无意义
+        global _warned_unsupported
+        if not _warned_unsupported:
+            logger.warning(
+                "结构化调用失败(%s): %s；若代理不支持 response_format，"
+                "请设 STRUCTURED_OUTPUT_ENABLED=false 避免每次多一次失败请求",
+                label or schema.__name__, type(exc).__name__,
+            )
+            _warned_unsupported = True
+        else:
+            logger.debug("结构化调用失败(%s): %s", label or schema.__name__, type(exc).__name__)
         return None
 
     if isinstance(out, schema):

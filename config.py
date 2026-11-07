@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     prompt_cache_key: str = ""
     # 流式响应回传 usage；关闭会导致成本统计静默归零
     stream_usage: bool = True
+    # 结构化输出：部分 OpenAI 兼容代理不支持 response_format，
+    # 开启时每次决策会多一次失败请求（翻倍延迟与成本）；这类代理请设 false
+    structured_output_enabled: bool = True
 
     # ── Embedding ──
     embedding_model: str = "text-embedding-3-small"

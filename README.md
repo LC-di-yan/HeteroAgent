@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-354%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-357%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -142,6 +142,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — / 官方地址 | 模型凭据，支持兼容网关 |
 | `MODEL_NAME` / `LIGHT_MODEL_NAME` | `gpt-5.1` / 空 | 主模型用于生成与合规；轻模型仅用于路由（空=复用主模型） |
 | `USE_RESPONSES_API` / `STREAM_USAGE` | `false` / `true` | Responses API 与流式 usage 回传（供应商不支持时参数自动忽略） |
+| `STRUCTURED_OUTPUT_ENABLED` | `true` | 代理不支持 `response_format` 时设 `false`，避免每次决策多一次失败请求 |
 | `PROMPT_CACHE_KEY` / `REASONING_EFFORT` | 空 / 空 | 提示词缓存槽位、推理强度（可选） |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
 | `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
@@ -186,14 +187,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── persistence/             # 统一工单仓储（MCP 工具 + 降级路径共用）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 354 项离线测试
+├── tests/                   # 357 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 354 passed（全部离线，无需 API Key）
+python -m pytest -q          # 357 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
@@ -222,7 +223,8 @@ python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
 详细方案与验收标准：[docs/UPGRADE-PLAN-v2.md](docs/UPGRADE-PLAN-v2.md)；关键决策记录见 [docs/adr/](docs/adr/README.md)（固定拓扑、fail-closed、禁用伪向量、MCP 迁移、HITL、布局策略、工单双实现过渡、跨会话事实）。
 
 变更历史见 [CHANGELOG.md](CHANGELOG.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)，
-逐任务完成情况见 [docs/STATUS.md](docs/STATUS.md)（对照方案 T-P0-01…T-P3-06）。
+逐任务完成情况见 [docs/STATUS.md](docs/STATUS.md)（对照方案 T-P0-01…T-P3-06）；
+真实模型验证结论见 [docs/REAL-MODEL-VALIDATION.md](docs/REAL-MODEL-VALIDATION.md)。
 
 ## 许可
 
