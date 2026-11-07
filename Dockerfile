@@ -59,6 +59,7 @@ COPY --chown=appuser:appgroup tracing/ ./tracing/
 COPY --chown=appuser:appgroup evaluation/ ./evaluation/
 COPY --chown=appuser:appgroup tooling/ ./tooling/
 COPY --chown=appuser:appgroup events/ ./events/
+COPY --chown=appuser:appgroup persistence/ ./persistence/
 COPY --chown=appuser:appgroup static/ ./static/
 
 # 切换到 appuser：此后 CMD / HEALTHCHECK 均以非 root 身份执行
