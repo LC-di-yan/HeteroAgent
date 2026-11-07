@@ -76,7 +76,7 @@
 2. **CI 未启用**：仅本地 pre-commit 生效。
 3. ~~工单双存储~~：已偿还（`persistence/ticket_repo.py` 统一仓储，ADR-0007 已关闭）。
 4. **AG-UI 字段未复核**：官方 SDK 源码不可达，接入真实客户端前需核对。
-5. **指标不跨副本**：`/metrics` 数据来自单进程。
+5. ~~指标不跨副本~~：已解决（`OTEL_METRICS_ENABLED=true` + OTLP 导出，T-P2-07）。`/metrics` 端点仍为单进程视图，跨副本聚合走 collector。
 6. **语义缓存为进程内实现**：多副本需换 Redis 版；`kb_version` 用文档数近似（ADR-0009）。
 
 ## 如何复核
