@@ -17,7 +17,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := install
 
-.PHONY: install run dev test lint format cov hooks check docker-build compose-up compose-down eval eval-all route-eval trajectory-eval calibrate
+.PHONY: install run dev test lint format cov hooks check ci docker-build compose-up compose-down eval eval-all route-eval trajectory-eval calibrate
 
 # 安装运行时依赖 + 开发工具（比 CI 多装 pytest-cov，供 cov 目标使用）
 # 等价命令：python -m pip install -r requirements.txt pytest pytest-asyncio pytest-cov ruff
@@ -80,6 +80,11 @@ hooks:
 # 等价命令：python scripts/check.py
 check:
 	$(PY) scripts/check.py
+
+# 本地 CI 等价物：与 .github/workflows/ci.yml 同步骤（lint → test → 评估门禁）
+# 等价命令：ruff check . --exclude docs && pytest -q && python -m evaluation.run --with-trajectory
+ci: lint test
+	$(PY) -m evaluation.run --with-trajectory
 
 # 统一门禁（路由 + 合规），退出码非 0 表示低于阈值
 # 等价命令：python -m evaluation.run

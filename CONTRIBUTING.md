@@ -14,6 +14,7 @@ cp .env.example .env    # 填写 OPENAI_API_KEY（或使用 DEMO_MODE=true 免�
 ```bash
 make hooks      # 一次性：启用 .githooks/pre-commit（ruff + pytest 自动跑）
 make check      # 手动跑同一套检查；--fast 可只跑 ruff
+make ci         # 本地 CI 等价物：ruff → pytest → 评估门禁（GitHub Actions 未启用时的替代）
 ```
 
 等价裸命令：

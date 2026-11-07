@@ -52,7 +52,7 @@
 | T-P2-02 | 记忆分域 | ✅ | `memory/context_store.py`，org/user 命名空间；ADR-0008 |
 | T-P2-03 | 向量库后端 | ⏸ | 需先评估数据量；当前 FAISS 足够 |
 | T-P2-04 | 评估体系 | ✅ | 路由 / 合规 / 检索 / 执行轨迹指标；`evaluation/trajectory_eval.py` 从 span 还原阶段序列；`tracing/eval_link.py` 把指标以 `gen_ai.evaluation.result` span 回挂 trace（`--emit-eval-events`） |
-| T-P2-05 | CI 门禁 | ⏸ | 模板 `docs/ci/ci.yml.example` 就绪；GitHub token 缺 `workflow` scope 无法推送。已用本地 pre-commit 兜底（`make hooks`） |
+| T-P2-05 | CI 门禁 | ⏸ | 模板 `docs/ci/ci.yml.example` 就绪；GitHub token 缺 `workflow` scope 无法推送。本地已有等价物：`make hooks`（pre-commit）+ `make ci`（ruff → pytest → 评估门禁） |
 | T-P2-06 | 流式与前端协议 | ✅ | 节点级 + token 级 SSE；AG-UI 子集（`events/agui.py`，⚠ 未对照官方 SDK 复核字段） |
 | T-P2-07 | 工程与多副本 | ✅ | compose / redis 限流 / redis 审批 / Postgres 检查点 ✅；指标经 OTel Metrics + OTLP 可跨副本聚合（`OTEL_METRICS_ENABLED=true`） |
 | T-P2-08 | 模型化护栏 | ✅ | `security/guardrail.py`（默认关闭，需配置 endpoint） |
