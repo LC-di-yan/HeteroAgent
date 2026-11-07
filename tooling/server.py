@@ -83,6 +83,25 @@ KNOWLEDGE_BASE: list[dict] = [
     },
 ]
 
+# 知识库检索后端：应用启动时注入真实向量库，未注入时用上面的演示 KB
+_KNOWLEDGE_BACKEND: Any = None
+
+
+def set_knowledge_backend(fn: Any) -> None:
+    """注入真实检索实现：(query, top_k) -> list[{content, source, score}]（可为协程）。"""
+    global _KNOWLEDGE_BACKEND
+    _KNOWLEDGE_BACKEND = fn
+
+
+def has_knowledge_backend() -> bool:
+    return _KNOWLEDGE_BACKEND is not None
+
+
+def reset_knowledge_backend() -> None:
+    global _KNOWLEDGE_BACKEND
+    _KNOWLEDGE_BACKEND = None
+
+
 # 幂等工单存储：idempotency_key → 工单结果
 _TICKETS_BY_KEY: dict[str, dict] = {}
 _TICKETS_BY_ID: dict[str, dict] = {}
@@ -156,6 +175,19 @@ async def knowledge_search(query: str, top_k: int = 3) -> dict:
     """
     if not query or not query.strip():
         return {"query": query, "results": [], "total": 0}
+
+    if _KNOWLEDGE_BACKEND is not None:
+        try:
+            results = list(await _KNOWLEDGE_BACKEND(query, int(top_k)))
+        except Exception as exc:  # 后端故障：把错误回传给调用方，由它决定回退
+            return {"query": query, "results": [], "total": 0,
+                    "error": f"{type(exc).__name__}: {exc}", "backend": "injected"}
+        return {
+            "query": query,
+            "results": results[: max(1, int(top_k))],
+            "total": len(results),
+            "backend": "injected",
+        }
 
     q_tokens = set(_tokenize(query))
     scored: list[dict] = []

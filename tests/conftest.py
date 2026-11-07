@@ -50,3 +50,15 @@ def fake_llm():
 @pytest.fixture
 def tmp_index(tmp_path):
     return str(tmp_path / "faiss_index")
+
+@pytest.fixture(autouse=True)
+def _isolate_knowledge_backend():
+    """隔离 tooling.server 的全局检索后端，避免测试间互相污染。"""
+    try:
+        from tooling.server import reset_knowledge_backend
+    except Exception:  # tooling 尚未导入时无需清理
+        yield
+        return
+    reset_knowledge_backend()
+    yield
+    reset_knowledge_backend()

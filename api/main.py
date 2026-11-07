@@ -288,6 +288,16 @@ def create_app(
             except Exception as exc:
                 logger.error("编排图构建失败: %s", exc)
 
+        # 知识检索接入 MCP 工具：让检索也留下 execute_tool span，并统一工具面
+        try:
+            from tooling.server import set_knowledge_backend
+
+            if app.state.ltm is not None and hasattr(app.state.ltm, "asearch"):
+                set_knowledge_backend(lambda q, k: app.state.ltm.asearch(q, top_k=k))
+                logger.info("知识检索已接入 MCP 工具 knowledge_search")
+        except Exception as exc:
+            logger.warning("知识点工具接入失败，回退直连检索: %s", exc)
+
         # 知识库预置：仅在库为空时写入（配合 doc_id 去重，重启不重复）
         try:
             docs = getattr(app.state.ltm, "_documents", None)

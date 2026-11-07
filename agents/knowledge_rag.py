@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -133,7 +134,29 @@ class KnowledgeRAGAgent:
 
     # ── 检索 ──
 
+    async def _retrieve_via_tool(self, query: str, top_k: int) -> list[dict]:
+        """经 MCP 工具 knowledge_search 检索：统一工具面 + execute_tool span。"""
+        from agents.toolset import knowledge_search as knowledge_search_tool
+
+        raw = await knowledge_search_tool(query=query, top_k=top_k)
+        payload = json.loads(raw)
+        if not payload.get("success"):
+            raise RuntimeError(str(payload.get("error") or "knowledge_search 调用失败"))
+        result = payload.get("result") or {}
+        if result.get("error"):
+            raise RuntimeError(str(result["error"]))
+        return list(result.get("results") or [])
+
     async def _retrieve(self, query: str, top_k: int) -> list[dict]:
+        if bool(getattr(self.settings, "rag_via_mcp_tool", True)):
+            try:
+                from tooling.server import has_knowledge_backend
+
+                if has_knowledge_backend():
+                    return await self._retrieve_via_tool(query, top_k)
+            except Exception as exc:  # 工具链故障 → 回退直连，不影响回答
+                logger.warning("知识工具检索不可用，回退直连检索: %s", type(exc).__name__)
+
         memory = self.memory
         try:
             if hasattr(memory, "asearch"):

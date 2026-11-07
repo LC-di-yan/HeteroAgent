@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_rerank_top_k: int = 3
     rag_confidence_threshold: float = 0.30   # 由真实分数分布校准，见 T-P0-05
+    # 知识检索是否走 MCP 工具（knowledge_search）：统一工具面与 execute_tool span
+    rag_via_mcp_tool: bool = True
     rerank_enabled: bool = False
     # 工具调用：模型支持 bind_tools 时，业务动作走 tool_calls（T-P1-07）
     tool_calling_enabled: bool = True
