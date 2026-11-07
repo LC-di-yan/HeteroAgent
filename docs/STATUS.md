@@ -1,6 +1,6 @@
 # 实现状态（对照 UPGRADE-PLAN-v2 任务表）
 
-> 版本 v0.4.0 · 测试 357 项（全离线）· 覆盖率约 82% · ruff 全绿
+> 版本 v0.4.0 · 测试 365 项（全离线）· 覆盖率约 82% · ruff 全绿
 > 状态定义：✅ 完成 ｜ 🟡 部分完成（有明确偏差）｜ ⏸ 阻塞（缺外部输入）｜ ⛔ 未启动
 
 ## 总览
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- | --- | --- |
 | P0 正确性与安全 | 11 | 11 | 0 | 0 | 0 |
 | P1 规范对齐 | 9 | 7 | 2 | 0 | 0 |
-| P2 能力现代化 | 8 | 5 | 1 | 2 | 0 |
+| P2 能力现代化 | 8 | 6 | 0 | 2 | 0 |
 | P3 按需扩展 | 6 | 1 | 0 | 0 | 5 |
 
 ---
@@ -44,11 +44,11 @@
 | T-P1-08 | GenAI 语义约定 | ✅ | `tracing/otel_config.py`；`tests/test_tracing.py`（15 项） |
 | T-P1-09 | 文档与 ADR | ✅ | 8 条 ADR + README + CONTRIBUTING + CHANGELOG + 本文件 |
 
-## P2 — 能力现代化（5 ✅ / 1 🟡 / 2 ⏸）
+## P2 — 能力现代化（6 ✅ / 2 ⏸）
 
 | ID | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| T-P2-01 | 检索质量 | 🟡 | Contextual Retrieval ✅（`memory/ingest.py`）、CJK 混合分词 ✅、阈值校准工具 ✅（`evaluation/calibrate.py`）；**重排默认关闭**（缺真实 embedding 分布） |
+| T-P2-01 | 检索质量 | ✅ | Contextual Retrieval、CJK 混合分词；**阈值已用真实分布校准 0.30→0.53**（准确率 84.38%→90.62%）；**API 重排已启用**（`memory/rerank_api.py`，bge-reranker-v2-m3） |
 | T-P2-02 | 记忆分域 | ✅ | `memory/context_store.py`，org/user 命名空间；ADR-0008 |
 | T-P2-03 | 向量库后端 | ⏸ | 需先评估数据量；当前 FAISS 足够 |
 | T-P2-04 | 评估体系 | ✅ | 路由 / 合规 / 检索 / 执行轨迹指标；`evaluation/trajectory_eval.py` 从 span 还原阶段序列；`tracing/eval_link.py` 把指标以 `gen_ai.evaluation.result` span 回挂 trace（`--emit-eval-events`） |
@@ -72,7 +72,7 @@
 
 ## 已知缺口（按影响排序）
 
-1. **真实链路已部分验证**（2026-11-07，见 [REAL-MODEL-VALIDATION.md](REAL-MODEL-VALIDATION.md)）：真实 LLM 路由 96.67%、工具调用生效、合规审查语义级识别越权承诺。**仍缺 embedding**（所用代理只有聊天模型），故 `RAG_CONFIDENCE_THRESHOLD=0.30` 仍是理论值、重排仍未开启。
+1. **真实链路已全面验证**（2026-11-07，见 [REAL-MODEL-VALIDATION.md](REAL-MODEL-VALIDATION.md)）：LLM 路由 96.67%、工具调用生效、合规语义级识别；embedding（Qwen3-Embedding-0.6B，dim 1024）与 API 重排（bge-reranker-v2-m3）已接入，阈值校准为 0.53。**注意**：知识库仅 3 篇文档，检索指标满分不具区分度；两类分数仍重叠约 9%，单靠向量阈值不足以完全判别。
 2. **CI 未启用**：仅本地 pre-commit 生效。
 3. ~~工单双存储~~：已偿还（`persistence/ticket_repo.py` 统一仓储，ADR-0007 已关闭）。
 4. **AG-UI 字段未复核**：官方 SDK 源码不可达，接入真实客户端前需核对。
@@ -82,7 +82,7 @@
 ## 如何复核
 
 ```bash
-python -m pytest -q                     # 357 项
+python -m pytest -q                     # 365 项
 python -m ruff check . --exclude docs   # 全绿
 python -m evaluation.run                # 路由 + 合规门禁
 make calibrate                          # 检索阈值校准（需真实数据才有意义）

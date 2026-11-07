@@ -116,14 +116,26 @@ def calibrate(
 
 
 def collect_scores(memory, cases, top_k: int = 5) -> tuple[list[float], list[float]]:
-    """跑标注集，收集'最高检索分数'并按是否应命中分组。"""
+    """跑标注集，收集"最高检索分数"并按是否应命中分组。
+
+    分母口径与 evaluator 一致：
+    - grounded（expected_source 是三篇知识文档之一）→ 应命中
+    - out_of_scope → 应转人工
+    - conversation_general（寒暄/致谢/能力介绍）→ **排除**：
+      这类本来就不该匹配知识文档，计入"应命中"会人为制造分数重叠、
+      把校准结论带偏（本函数曾因此给出错误的阈值建议）。
+    """
     hit_scores: list[float] = []
     miss_scores: list[float] = []
     for case in cases:
+        # 只排除寒暄类；out_of_scope 必须保留为负样本
+        if getattr(case, "is_conversational", False) is True:
+            continue
         results = memory.search(case.query, top_k=top_k) or []
         best = max((float(doc.get("score", 0.0) or 0.0) for doc in results), default=0.0)
         source = getattr(case, "expected_source", "") or ""
-        if source == "out_of_scope":
+        is_oos = getattr(case, "is_out_of_scope", None)
+        if is_oos is True or (is_oos is None and source == "out_of_scope"):
             miss_scores.append(best)
         else:
             hit_scores.append(best)

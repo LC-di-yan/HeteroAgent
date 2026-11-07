@@ -93,3 +93,75 @@
 python -m evaluation.route_eval --router llm    # 路由准确率
 python -m evaluation.run --with-trajectory      # 统一门禁
 ```
+
+---
+
+## 补充：Embedding 与重排接入（2026-11-07 晚）
+
+第二个供应商提供了 embedding 与 reranker，解锁了此前被阻塞的三项。
+
+### 环境（凭据仅存本地 .env）
+
+| 用途 | 模型 | 维度/端点 |
+| --- | --- | --- |
+| Embedding | `Qwen3-Embedding-0.6B` | **1024**（不是默认 1536） |
+| Reranker | `bge-reranker-v2-m3` | `POST /rerank` |
+
+新增配置：`EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL`（留空则回退 LLM 凭据）、
+`RERANK_API_BASE_URL` / `RERANK_API_KEY` / `RERANK_API_MODEL`。
+API 重排优先于本地 sentence-transformers，无需下载模型、不占进程 CPU。
+
+### 阈值校准：0.30 是错的，应为 0.53
+
+在 32 条有效样本（27 grounded + 5 out_of_scope）上扫描：
+
+| 阈值 | 标注集准确率 |
+| --- | --- |
+| 0.30（原理论值） | 84.38% |
+| **0.53（校准值）** | **90.62%** |
+
+分数分布：
+- 应命中：min 0.4925 / p50 0.6803 / max 0.8110
+- 应转人工：min 0.3945 / p50 0.4852 / max 0.6125
+- 间隙 −0.12（**仍重叠**）
+
+重叠是 Qwen3-Embedding 对同域中文给出较高基线相似度所致，属模型特性。
+即便最优阈值也有约 9% 误差，说明**单靠向量阈值不足以完全判别**，
+后续可考虑用重排分数做二次门禁（当前重排只用于排序）。
+
+### 修复的两个真实 bug
+
+**1. `evaluation/calibrate.py` 分母口径错误**
+
+原实现把 `conversation_general`（寒暄/致谢）也算作"应命中"。
+这类本就不该匹配知识文档，分数天然很低，计入后人为制造"两类重叠"，
+把建议阈值从 0.53 拉低到 0.36，准确率虚低。
+现改为只排除寒暄类、保留 out_of_scope 作负样本，与 `evaluator.is_grounded` 口径一致。
+
+**2. `evaluation/run.py` 未加载语料**
+
+`--with-retrieval` 创建了向量库却没调用 `load_corpus()`，
+导致检索恒为空、Recall/MRR/nDCG 恒为 0，门禁必然失败。
+现已补上，并显式 `load_dotenv()` + 传入 Settings。
+
+### 真实 RAG 链路验证
+
+| 输入 | 输出 | 判定 |
+| --- | --- | --- |
+| 理财产品A的收益率是多少 | 3.5%-5.2%，自动附风险提示 | ✅ |
+| 怎么退钱 | 命中退款政策（"退钱"≠"退款"字面） | ✅ 语义匹配 |
+| 今天股市行情怎么样 | 转人工 | ✅ 阈值 0.53 生效 |
+
+日志确认 API 重排器已启用。
+
+### 注意：检索指标满分不代表能力强
+
+`Recall@5 = MRR = nDCG@5 = 1.0` 是在**只有 3 篇文档、top_k=5** 的条件下取得的——
+全量返回必然命中。要得到有意义的检索指标，需要扩充知识库到几十上百篇。
+
+### 复核命令
+
+```bash
+make calibrate                                   # 阈值校准
+python -m evaluation.run --with-retrieval --with-trajectory   # 全维度门禁
+```

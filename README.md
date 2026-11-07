@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-357%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-365%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -146,8 +146,10 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | `PROMPT_CACHE_KEY` / `REASONING_EFFORT` | 空 / 空 | 提示词缓存槽位、推理强度（可选） |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / 1536 | 向量模型与维度 |
 | `ALLOW_EMBEDDING_FALLBACK` | `false` | 关闭时 embedding 不可用即报错（禁止伪向量） |
-| `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；分数已归一化到 [0,1]；用 `make calibrate` 在标注集上校准 |
-| `RERANK_ENABLED` / `RERANK_MODEL` | `false` / bge-reranker-v2-m3 | 可选交叉编码器重排 |
+| `RAG_CONFIDENCE_THRESHOLD` | `0.30` | 低于阈值转人工；**务必用 `make calibrate` 按自己的 embedding 模型校准**（实测某模型最优值为 0.53） |
+| `RERANK_ENABLED` / `RERANK_MODEL` | `false` / bge-reranker-v2-m3 | 本地交叉编码器重排 |
+| `RERANK_API_BASE_URL` / `RERANK_API_KEY` | 空 / 空 | API 重排（`/rerank`），配置后优先于本地模型 |
+| `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL` | 空 / 空 | Embedding 独立供应商（留空复用 LLM 凭据） |
 | `API_KEYS` / `REQUIRE_AUTH` | 空 / `false` | 接口鉴权 |
 | `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_BACKEND` | 60 / `memory` | 每主体每分钟上限；`redis` 时多副本共享配额 |
 | `TENANT_DAILY_REQUESTS` / `TENANT_DAILY_TOKENS` | 0 / 0 | 每用户自然日预算（0=不限），超出返回 429 |
@@ -187,14 +189,14 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── persistence/             # 统一工单仓储（MCP 工具 + 降级路径共用）
 ├── static/index.html        # 单文件聊天前端
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 357 项离线测试
+├── tests/                   # 365 项离线测试
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 357 passed（全部离线，无需 API Key）
+python -m pytest -q          # 365 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）

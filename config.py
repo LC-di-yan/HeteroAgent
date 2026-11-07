@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     embedding_timeout_seconds: float = 10.0
+    # Embedding 可用独立供应商（留空则复用 LLM 的 key/base_url）
+    embedding_api_key: str = ""
+    embedding_base_url: str = ""
     # 禁止静默伪降级（G7）：False 时 embedding 不可用直接报错
     allow_embedding_fallback: bool = False
 
@@ -67,6 +70,11 @@ class Settings(BaseSettings):
     # 跨会话用户事实（T-P2-02）：工单号等确定性事实，写入 LangGraph Store
     context_store_enabled: bool = True
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    # API 版重排器（/rerank 端点）：配置后优先于本地 sentence-transformers
+    rerank_api_base_url: str = ""
+    rerank_api_key: str = ""
+    rerank_api_model: str = "bge-reranker-v2-m3"
+    rerank_timeout_seconds: float = 15.0
 
     # ── Redis / 短期记忆 ──
     redis_url: str = "redis://localhost:6379/0"
@@ -139,6 +147,14 @@ class Settings(BaseSettings):
     enable_debug_tool_endpoints: bool = False
 
     # ── 派生属性 ──
+    @property
+    def effective_embedding_api_key(self) -> str:
+        return self.embedding_api_key or self.openai_api_key
+
+    @property
+    def effective_embedding_base_url(self) -> str:
+        return self.embedding_base_url or self.openai_base_url
+
     @property
     def effective_light_model(self) -> str:
         return self.light_model_name or self.model_name

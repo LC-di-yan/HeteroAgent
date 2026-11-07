@@ -74,6 +74,8 @@ class KnowledgeRAGAgent:
         self.semantic_cache = semantic_cache
         self._cross_encoder = None
         self._cross_encoder_checked = False
+        self._api_reranker = None
+        self._api_reranker_checked = False
         self._cross_encoder_lock = asyncio.Lock()
 
     # ── 记忆懒加载：允许在 lifespan 之外注入 ──
@@ -113,6 +115,26 @@ class KnowledgeRAGAgent:
     async def _rerank(self, query: str, documents: list[dict], top_k: int) -> list[dict]:
         if not documents:
             return []
+        if not self.settings.rerank_enabled:
+            return documents[:top_k]
+
+        # 优先 API 重排器（无需本地模型、不占进程 CPU）
+        if self._api_reranker is None and not self._api_reranker_checked:
+            self._api_reranker_checked = True
+            try:
+                from memory.rerank_api import build_api_reranker
+
+                self._api_reranker = build_api_reranker(self.settings)
+                if self._api_reranker is not None:
+                    logger.info("已启用 API 重排器: %s", self.settings.rerank_api_model)
+            except Exception as exc:
+                logger.warning("API 重排器初始化失败: %s", exc)
+        if self._api_reranker is not None:
+            ranked = await self._api_reranker.rerank(query, documents, top_k=top_k)
+            if ranked is not None:
+                return ranked
+            # API 失败 → 继续尝试本地，或直接保持原序
+
         ce = await self._get_cross_encoder()
         if ce is None:
             return documents[:top_k]

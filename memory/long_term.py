@@ -335,7 +335,12 @@ class EmbeddingMixin:
 
     def _init_openai_clients(self) -> None:
         """构造 OpenAI 同步 + 异步 Embedding 客户端（只构造，不做网络探测）。"""
-        api_key = str(getattr(self.settings, "openai_api_key", "") or "")
+        # Embedding 可用独立供应商；未配置时回退到 LLM 的凭据
+        api_key = str(
+            getattr(self.settings, "effective_embedding_api_key", "")
+            or getattr(self.settings, "openai_api_key", "")
+            or ""
+        )
         if openai is None or not api_key:
             logger.info(
                 "未配置 Embedding API key（或 openai 未安装）：需要向量时会抛出 "
@@ -343,7 +348,11 @@ class EmbeddingMixin:
             )
             return
         timeout = float(getattr(self.settings, "embedding_timeout_seconds", 10.0) or 10.0)
-        base_url = getattr(self.settings, "openai_base_url", "") or None
+        base_url = (
+            getattr(self.settings, "effective_embedding_base_url", "")
+            or getattr(self.settings, "openai_base_url", "")
+            or None
+        )
         try:
             self._sync_client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
             self._async_client = openai.AsyncOpenAI(

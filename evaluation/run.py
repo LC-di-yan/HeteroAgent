@@ -133,9 +133,16 @@ async def _main(args) -> int:  # noqa: ANN001
     memory = None
     if args.with_retrieval:
         try:
+            from dotenv import load_dotenv
+
+            load_dotenv()
+            from config import Settings
+            from evaluation.evaluator import load_corpus
             from memory.long_term import create_vector_store
 
-            memory = create_vector_store()
+            memory = create_vector_store(settings=Settings())
+            # 必须灌入语料，否则检索恒为空、指标恒为 0（曾漏此步导致误判）
+            load_corpus(memory)
         except Exception as exc:  # pragma: no cover - 依赖环境
             print(f"[warn] 向量库不可用，跳过检索评估: {exc}", file=sys.stderr)
 
