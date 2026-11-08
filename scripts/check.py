@@ -16,6 +16,15 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Windows 控制台默认 GBK：状态行含 ✅ 时 print 会抛 UnicodeEncodeError，
+# 导致「检查全过但钩子仍失败」。统一改成 UTF-8 并容错。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 
 def _run(cmd: list[str], label: str, cwd: str | None = None) -> bool:
     print(f"[check] {label}: {' '.join(cmd)}", flush=True)

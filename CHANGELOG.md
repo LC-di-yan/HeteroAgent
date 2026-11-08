@@ -22,6 +22,7 @@
 ### 修复
 - SSE 解析支持 CRLF、多行 `data:` 与尾包；`done` 之后不再丢事件
 - 历史与指标不再使用 `window.alert`，改为抽屉面板与内联状态
+- `scripts/check.py` 在 GBK 控制台下打印状态行会抛 `UnicodeEncodeError`，导致「检查通过但提交被拦」；改为 UTF-8 输出并容错
 
 ## [0.4.0] — 2026-11-06 · P2 能力现代化
 
