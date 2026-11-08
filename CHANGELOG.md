@@ -2,6 +2,27 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号语义化。
 
+## [Unreleased] — 前端工作台重构
+
+### 新增
+- 前端拆为语义化 HTML + 设计令牌 CSS + 原生 ES 模块（`static/js/*`），零构建、零外链，离线可用
+- 会话侧栏：本地多会话、按首条消息命名、删除二次确认、刷新后恢复；服务端分配 session_id 时自动迁移本地会话
+- 流式体验：阶段进度（意图路由 → 检索/工单 → 合规审查 → 生成）+ token 增量渲染、停止生成、吸底跟随与「最新回复」浮标
+- 抽屉控制台：服务端历史、待审批队列（含哈希链校验）、运行指标、设置（API Key / user_id / AG-UI 协议 / 主题）
+- Markdown 渲染（标题、列表、表格、代码块、引用、链接），全部经 DOM API 构建，模型输出不经过 `innerHTML`
+- 内联错误态：400/401/413/429/503 与断网分别给出可执行提示，429 带冷却倒计时
+- 无障碍：语义地标、跳过导航、`aria-live` 播报、焦点可见、`prefers-reduced-motion`
+- 文档：新增 [docs/FRONTEND.md](docs/FRONTEND.md)（截图、状态机、SSE/AG-UI 契约、无障碍与验证）；README 增加「前端工作台」章节
+
+### 变更
+- 视觉重做：石墨中性色 + 单一冷蓝强调色；移除紫蓝渐变与 emoji 图标，改为统一描边的内联 SVG 图标集
+- 性能：移除全站 `transition: all`；token 增量按 `requestAnimationFrame` 合并；不再加载 Google Fonts（消除离线白屏）
+- 前端契约测试：`tests/test_static_ui.py` 锁定 DOM id、图标名、本地资源与「无外链 / 无 emoji / 无 alert」
+
+### 修复
+- SSE 解析支持 CRLF、多行 `data:` 与尾包；`done` 之后不再丢事件
+- 历史与指标不再使用 `window.alert`，改为抽屉面板与内联状态
+
 ## [0.4.0] — 2026-11-06 · P2 能力现代化
 
 ### 新增

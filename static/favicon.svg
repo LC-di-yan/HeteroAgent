@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HeteroAgent">
+  <rect width="64" height="64" rx="15" fill="#0c1016"/>
+  <path d="M32 10.5l16.8 9.7v19.6L32 49.5 15.2 39.8V20.2z" fill="none" stroke="#6f9bff" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M32 21.4l8.4 4.9v9.7L32 40.9l-8.4-4.9v-9.7z" fill="none" stroke="#93b6ff" stroke-width="2" stroke-linejoin="round" opacity=".85"/>
+  <circle cx="32" cy="31.1" r="2.4" fill="#6f9bff"/>
+</svg>

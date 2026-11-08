@@ -2,839 +2,224 @@
 <html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HeteroAgent · 智能客服</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    /* ═══════════════════════════════════════
-       Reset
-       ═══════════════════════════════════════ */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    /* ═══════════════════════════════════════
-       Theme Tokens
-       ═══════════════════════════════════════ */
-    :root {
-      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-      --mono: 'JetBrains Mono', 'Fira Code', monospace;
-
-      --indigo:      #6366f1;
-      --indigo-soft: #818cf8;
-      --violet:      #8b5cf6;
-      --emerald:     #10b981;
-      --amber:       #f59e0b;
-      --rose:        #f43f5e;
-      --cyan:        #06b6d4;
-
-      --radius-sm: 8px;
-      --radius:    12px;
-      --radius-lg: 16px;
-      --radius-xl: 20px;
-
-      --transition: .28s cubic-bezier(.4,0,.2,1);
-    }
-
-    /* ── Dark ── */
-    [data-theme="dark"] {
-      --bg-deep:     #08080c;
-      --bg-main:     #0e0e14;
-      --bg-card:     #14141e;
-      --bg-elevated: #1a1a26;
-      --bg-hover:    #1f1f2e;
-      --bg-input:    #111119;
-      --border:      #1e1e2e;
-      --text:        #f0f0f5;
-      --text-sec:    #a0a0b8;
-      --text-dim:    #5a5a72;
-      --indigo-bg:   rgba(99,102,241,.08);
-      --emerald-bg:  rgba(16,185,129,.08);
-      --amber-bg:    rgba(245,158,11,.08);
-      --rose-bg:     rgba(244,63,94,.08);
-      --cyan-bg:     rgba(6,182,212,.08);
-      --violet-bg:   rgba(139,92,246,.08);
-      --shadow-sm:   0 1px 3px rgba(0,0,0,.3);
-      --shadow:      0 4px 24px rgba(0,0,0,.4);
-      --input-grad:  linear-gradient(to top, #08080c 60%, transparent);
-      --topbar-bg:   rgba(14,14,20,.85);
-      --scrollbar:   #1e1e2e;
-      --user-grad:   linear-gradient(135deg, #6366f1, #7c3aed);
-      --send-grad:   linear-gradient(135deg, #6366f1, #7c3aed);
-      --send-shadow: 0 2px 8px rgba(99,102,241,.3);
-      --send-shadow-hover: 0 4px 16px rgba(99,102,241,.4);
-      --glow:        radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99,102,241,.06), transparent);
-      --welcome-glow-shadow: 0 8px 40px rgba(99,102,241,.3);
-      --badge-intent-bg: var(--indigo-bg);
-      --badge-intent-clr: var(--indigo-soft);
-      --badge-intent-bdr: rgba(99,102,241,.15);
-      --badge-pass-bg: var(--emerald-bg);
-      --badge-pass-clr: var(--emerald);
-      --badge-pass-bdr: rgba(16,185,129,.15);
-      --badge-fail-bg: var(--rose-bg);
-      --badge-fail-clr: var(--rose);
-      --badge-fail-bdr: rgba(244,63,94,.15);
-      --arch-arrow-clr: var(--text-dim);
-      --new-chat-bdr: rgba(99,102,241,.25);
-      --new-chat-hover-bg: rgba(99,102,241,.15);
-      --new-chat-hover-bdr: rgba(99,102,241,.4);
-      --avatar-user: linear-gradient(135deg, #667eea, #764ba2);
-      --avatar-user-shadow: 0 2px 8px rgba(102,126,234,.25);
-      --avatar-bot: linear-gradient(135deg, #6366f1, #8b5cf6);
-      --avatar-bot-shadow: 0 2px 8px rgba(99,102,241,.25);
-      --typing-bg: var(--bg-card);
-      --typing-bdr: var(--border);
-      --typing-dot-bg: var(--indigo-soft);
-      --input-focus-bdr: rgba(99,102,241,.4);
-      --input-focus-shadow: 0 0 0 3px rgba(99,102,241,.08), 0 4px 24px rgba(0,0,0,.4);
-      --kbd-bg: var(--bg-card);
-      --kbd-bdr: var(--border);
-      --chip-hover-bg: var(--indigo-bg);
-      --topbar-btn-hover-bdr: rgba(99,102,241,.3);
-      color-scheme: dark;
-    }
-
-    /* ── Light ── */
-    [data-theme="light"] {
-      --bg-deep:     #f8f9fc;
-      --bg-main:     #ffffff;
-      --bg-card:     #ffffff;
-      --bg-elevated: #f3f4f8;
-      --bg-hover:    #eceef4;
-      --bg-input:    #f3f4f8;
-      --border:      #e2e4ea;
-      --text:        #1a1d26;
-      --text-sec:    #5a5e6e;
-      --text-dim:    #9498a8;
-      --indigo-bg:   rgba(99,102,241,.07);
-      --emerald-bg:  rgba(16,185,129,.07);
-      --amber-bg:    rgba(245,158,11,.07);
-      --rose-bg:     rgba(244,63,94,.07);
-      --cyan-bg:     rgba(6,182,212,.07);
-      --violet-bg:   rgba(139,92,246,.07);
-      --shadow-sm:   0 1px 3px rgba(0,0,0,.06);
-      --shadow:      0 4px 24px rgba(0,0,0,.08);
-      --input-grad:  linear-gradient(to top, #f8f9fc 60%, transparent);
-      --topbar-bg:   rgba(255,255,255,.88);
-      --scrollbar:   #d0d2da;
-      --user-grad:   linear-gradient(135deg, #6366f1, #7c3aed);
-      --send-grad:   linear-gradient(135deg, #6366f1, #7c3aed);
-      --send-shadow: 0 2px 8px rgba(99,102,241,.2);
-      --send-shadow-hover: 0 4px 16px rgba(99,102,241,.3);
-      --glow:        radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99,102,241,.05), transparent);
-      --welcome-glow-shadow: 0 8px 40px rgba(99,102,241,.18);
-      --badge-intent-bg: var(--indigo-bg);
-      --badge-intent-clr: #4f46e5;
-      --badge-intent-bdr: rgba(99,102,241,.12);
-      --badge-pass-bg: var(--emerald-bg);
-      --badge-pass-clr: #059669;
-      --badge-pass-bdr: rgba(16,185,129,.12);
-      --badge-fail-bg: var(--rose-bg);
-      --badge-fail-clr: #e11d48;
-      --badge-fail-bdr: rgba(244,63,94,.12);
-      --arch-arrow-clr: var(--text-dim);
-      --new-chat-bdr: rgba(99,102,241,.2);
-      --new-chat-hover-bg: rgba(99,102,241,.1);
-      --new-chat-hover-bdr: rgba(99,102,241,.35);
-      --avatar-user: linear-gradient(135deg, #667eea, #764ba2);
-      --avatar-user-shadow: 0 2px 8px rgba(102,126,234,.18);
-      --avatar-bot: linear-gradient(135deg, #6366f1, #8b5cf6);
-      --avatar-bot-shadow: 0 2px 8px rgba(99,102,241,.18);
-      --typing-bg: #ffffff;
-      --typing-bdr: var(--border);
-      --typing-dot-bg: var(--indigo-soft);
-      --input-focus-bdr: rgba(99,102,241,.45);
-      --input-focus-shadow: 0 0 0 3px rgba(99,102,241,.08), 0 4px 24px rgba(0,0,0,.08);
-      --kbd-bg: #f0f1f5;
-      --kbd-bdr: var(--border);
-      --chip-hover-bg: var(--indigo-bg);
-      --topbar-btn-hover-bdr: rgba(99,102,241,.3);
-      color-scheme: light;
-    }
-
-    /* ── Theme transition ── */
-    html, html *, html *::before, html *::after {
-      transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
-    }
-
-    html, body {
-      height: 100%; overflow: hidden;
-      font-family: var(--font);
-      background: var(--bg-deep);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* ═══════════════════════════════════════
-       Layout
-       ═══════════════════════════════════════ */
-    .app { display: flex; height: 100vh; }
-
-    /* ── Sidebar ── */
-    .sidebar {
-      width: 280px; background: var(--bg-main);
-      border-right: 1px solid var(--border);
-      display: flex; flex-direction: column; flex-shrink: 0;
-    }
-    .sidebar-header {
-      padding: 20px; border-bottom: 1px solid var(--border);
-    }
-    .logo { display: flex; align-items: center; gap: 12px; }
-    .logo-mark {
-      width: 40px; height: 40px;
-      background: linear-gradient(135deg, var(--indigo), var(--violet));
-      border-radius: var(--radius);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-      box-shadow: 0 4px 16px rgba(99,102,241,.25);
-    }
-    .logo-text h1 {
-      font-size: 15px; font-weight: 700;
-      background: linear-gradient(135deg, var(--indigo-soft), var(--violet));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .logo-text p {
-      font-size: 11px; color: var(--text-dim);
-      font-family: var(--mono); letter-spacing: .5px;
-    }
-
-    .sidebar-section { padding: 16px 12px; flex: 1; overflow-y: auto; }
-    .sidebar-section::-webkit-scrollbar { width: 4px; }
-    .sidebar-section::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
-
-    .section-label {
-      font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 1.2px;
-      color: var(--text-dim); padding: 0 8px 8px;
-    }
-
-    .new-chat-btn {
-      width: 100%;
-      background: var(--indigo-bg); color: var(--indigo-soft);
-      border: 1px dashed var(--new-chat-bdr);
-      border-radius: var(--radius); padding: 10px;
-      font-size: 13px; font-weight: 500; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      margin-bottom: 16px;
-    }
-    .new-chat-btn:hover { background: var(--new-chat-hover-bg); border-color: var(--new-chat-hover-bdr); }
-
-    .arch-card {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 14px; margin-bottom: 8px;
-    }
-    .arch-card h4 { font-size: 12px; font-weight: 600; color: var(--text-sec); margin-bottom: 10px; }
-    .arch-pipeline { display: flex; flex-direction: column; gap: 4px; }
-    .arch-node {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 10px; border-radius: var(--radius-sm);
-      font-size: 11px; font-weight: 500;
-    }
-    .arch-node .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .arch-node.intent    { background: var(--indigo-bg); color: var(--indigo-soft); }
-    .arch-node.intent .dot { background: var(--indigo); }
-    .arch-node.knowledge { background: var(--emerald-bg); color: var(--emerald); }
-    .arch-node.knowledge .dot { background: var(--emerald); }
-    .arch-node.ticket    { background: var(--amber-bg); color: var(--amber); }
-    .arch-node.ticket .dot { background: var(--amber); }
-    .arch-node.compliance{ background: var(--rose-bg); color: var(--rose); }
-    .arch-node.compliance .dot { background: var(--rose); }
-    .arch-arrow { text-align: center; color: var(--arch-arrow-clr); font-size: 10px; padding: 1px 0; }
-
-    .sidebar-footer {
-      padding: 14px 20px; border-top: 1px solid var(--border);
-      font-size: 11px; color: var(--text-dim);
-      display: flex; align-items: center; gap: 6px;
-    }
-    .sidebar-footer .pulse {
-      width: 6px; height: 6px; background: var(--emerald);
-      border-radius: 50%; animation: pulse 2s infinite;
-    }
-
-    /* ── Main ── */
-    .main {
-      flex: 1; display: flex; flex-direction: column;
-      min-width: 0; background: var(--bg-deep); position: relative;
-    }
-    .main::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0;
-      height: 300px; background: var(--glow);
-      pointer-events: none; z-index: 0;
-    }
-
-    /* ── Top bar ── */
-    .topbar {
-      position: relative; z-index: 1;
-      padding: 14px 28px; border-bottom: 1px solid var(--border);
-      background: var(--topbar-bg); backdrop-filter: blur(16px);
-      display: flex; align-items: center; gap: 12px;
-    }
-    .topbar-session {
-      font-size: 12px; color: var(--text-dim); font-family: var(--mono);
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 4px 10px;
-      max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .topbar-actions { margin-left: auto; display: flex; gap: 6px; }
-    .topbar-actions button {
-      background: var(--bg-card); color: var(--text-sec);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 6px 14px; font-size: 12px; font-weight: 500;
-      cursor: pointer; display: flex; align-items: center; gap: 6px;
-    }
-    .topbar-actions button:hover {
-      background: var(--bg-hover); color: var(--text);
-      border-color: var(--topbar-btn-hover-bdr);
-    }
-
-    /* ── Theme Toggle ── */
-    .theme-toggle {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 6px 10px;
-      cursor: pointer; display: flex; align-items: center; gap: 6px;
-      font-size: 12px; font-weight: 500; color: var(--text-sec);
-      position: relative; overflow: hidden;
-    }
-    .theme-toggle:hover { background: var(--bg-hover); color: var(--text); border-color: var(--topbar-btn-hover-bdr); }
-    .theme-toggle .ico { font-size: 15px; line-height: 1; }
-    .theme-toggle .label { user-select: none; }
-
-    /* ═══════════════════════════════════════
-       Chat
-       ═══════════════════════════════════════ */
-    .chat-scroll {
-      flex: 1; overflow-y: auto; position: relative; z-index: 1;
-      padding: 28px 0 20px; scroll-behavior: smooth;
-    }
-    .chat-scroll::-webkit-scrollbar { width: 6px; }
-    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
-    .chat-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
-
-    .chat-container {
-      max-width: 820px; margin: 0 auto; padding: 0 28px;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-
-    /* ── Welcome ── */
-    .welcome {
-      display: flex; flex-direction: column; align-items: center;
-      justify-content: center; padding: 60px 20px 40px; animation: fadeIn .5s ease;
-    }
-    .welcome-glow {
-      width: 88px; height: 88px;
-      background: linear-gradient(135deg, var(--indigo), var(--violet));
-      border-radius: 28px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 36px;
-      box-shadow: var(--welcome-glow-shadow);
-      margin-bottom: 20px; position: relative;
-    }
-    .welcome-glow::after {
-      content: ''; position: absolute; inset: -8px; border-radius: 34px;
-      background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(139,92,246,.12));
-      filter: blur(20px); z-index: -1;
-    }
-    .welcome h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-    .welcome p { font-size: 14px; color: var(--text-sec); max-width: 440px; text-align: center; line-height: 1.7; }
-
-    .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 24px; max-width: 520px; }
-    .chip {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 24px; padding: 10px 18px;
-      font-size: 13px; font-weight: 500; color: var(--text-sec);
-      cursor: pointer; display: flex; align-items: center; gap: 6px;
-    }
-    .chip:hover {
-      border-color: var(--indigo); color: var(--text);
-      background: var(--chip-hover-bg);
-      box-shadow: 0 2px 12px rgba(99,102,241,.12);
-      transform: translateY(-1px);
-    }
-    .chip .icon { font-size: 15px; }
-
-    /* ── Messages ── */
-    .msg { display: flex; gap: 12px; max-width: 100%; animation: fadeUp .35s cubic-bezier(.22,1,.36,1); }
-    .msg.user { flex-direction: row-reverse; }
-    .msg.bot  { flex-direction: row; }
-
-    .msg-avatar {
-      width: 34px; height: 34px; border-radius: var(--radius); flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 15px; margin-top: 2px;
-    }
-    .msg.user .msg-avatar { background: var(--avatar-user); box-shadow: var(--avatar-user-shadow); }
-    .msg.bot  .msg-avatar { background: var(--avatar-bot);  box-shadow: var(--avatar-bot-shadow); }
-
-    .msg-body { display: flex; flex-direction: column; max-width: 75%; min-width: 0; }
-    .msg.user .msg-body { align-items: flex-end; }
-    .msg.bot  .msg-body { align-items: flex-start; }
-
-    .msg-bubble {
-      padding: 12px 18px; border-radius: var(--radius-lg);
-      line-height: 1.75; font-size: 14px; word-break: break-word; white-space: pre-wrap;
-    }
-    .msg.user .msg-bubble {
-      background: var(--user-grad); color: #fff; border-bottom-right-radius: 4px;
-    }
-    .msg.bot .msg-bubble {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-bottom-left-radius: 4px; color: var(--text);
-    }
-
-    .msg-meta { display: flex; gap: 6px; align-items: center; margin-top: 5px; padding: 0 4px; }
-    .badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500;
-    }
-    .badge.intent { background: var(--badge-intent-bg); color: var(--badge-intent-clr); border: 1px solid var(--badge-intent-bdr); }
-    .badge.pass   { background: var(--badge-pass-bg);   color: var(--badge-pass-clr);   border: 1px solid var(--badge-pass-bdr); }
-    .badge.fail   { background: var(--badge-fail-bg);   color: var(--badge-fail-clr);   border: 1px solid var(--badge-fail-bdr); }
-    .badge .ico { font-size: 10px; }
-
-    /* ── HITL 审批卡片 ── */
-    .approval-card {
-      margin-top: 10px; padding: 12px 14px; border-radius: var(--radius);
-      background: var(--bg-elevated); border: 1px solid var(--border);
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .approval-actions { display: flex; gap: 8px; }
-    .approval-actions button {
-      flex: 1; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
-      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
-      font-size: 13px; font-family: inherit; transition: var(--transition);
-    }
-    .approval-actions button:hover:not(:disabled) { background: var(--bg-hover); }
-    .approval-actions button:disabled { opacity: .5; cursor: not-allowed; }
-    .approval-actions button.primary { border-color: var(--emerald); color: var(--emerald); }
-    .approval-actions button.danger  { border-color: var(--rose);    color: var(--rose); }
-    .approval-status { font-size: 12px; color: var(--text-sec); }
-
-    .msg-time { font-size: 11px; color: var(--text-dim); padding: 0 4px; margin-top: 2px; }
-
-    /* ── Typing ── */
-    .typing-row { display: none; align-items: center; gap: 12px; padding: 4px 0; }
-    .typing-row.active { display: flex; }
-    .typing-bubble {
-      background: var(--typing-bg); border: 1px solid var(--typing-bdr);
-      border-radius: var(--radius-lg); border-bottom-left-radius: 4px;
-      padding: 14px 20px; display: flex; gap: 5px;
-    }
-    .typing-dot {
-      width: 7px; height: 7px; background: var(--typing-dot-bg);
-      border-radius: 50%; animation: bounce .8s infinite alternate;
-    }
-    .typing-dot:nth-child(2) { animation-delay: .15s; }
-    .typing-dot:nth-child(3) { animation-delay: .3s; }
-
-    /* ── Input ── */
-    .input-bar {
-      position: relative; z-index: 1;
-      padding: 16px 28px 20px; background: var(--input-grad);
-    }
-    .input-card {
-      max-width: 820px; margin: 0 auto;
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-xl); padding: 6px;
-      display: flex; align-items: flex-end; gap: 6px;
-    }
-    .input-card:focus-within {
-      border-color: var(--input-focus-bdr); box-shadow: var(--input-focus-shadow);
-    }
-    .input-card textarea {
-      flex: 1; background: transparent; border: none; outline: none;
-      color: var(--text); font-size: 14px; font-family: var(--font);
-      padding: 12px 16px; resize: none;
-      min-height: 44px; max-height: 140px; line-height: 1.5;
-    }
-    .input-card textarea::placeholder { color: var(--text-dim); }
-
-    .send-btn {
-      width: 44px; height: 44px; flex-shrink: 0;
-      background: var(--send-grad); color: #fff; border: none;
-      border-radius: var(--radius-lg); cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: var(--send-shadow);
-    }
-    .send-btn:hover { transform: scale(1.05); box-shadow: var(--send-shadow-hover); }
-    .send-btn:active { transform: scale(.97); }
-    .send-btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-    .send-btn svg { width: 18px; height: 18px; }
-
-    .input-footer {
-      text-align: center; margin-top: 10px;
-      font-size: 11px; color: var(--text-dim); opacity: .5;
-    }
-    .input-footer kbd {
-      background: var(--kbd-bg); border: 1px solid var(--kbd-bdr);
-      border-radius: 4px; padding: 1px 5px;
-      font-family: var(--mono); font-size: 10px;
-    }
-
-    /* ═══════════════════════════════════════
-       Animations
-       ═══════════════════════════════════════ */
-    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes fadeUp  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes bounce  { to { opacity: .25; transform: translateY(-5px); } }
-    @keyframes pulse   { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
-
-    /* ═══════════════════════════════════════
-       Responsive
-       ═══════════════════════════════════════ */
-    @media (max-width: 860px) {
-      .sidebar { display: none; }
-      .chat-container { padding: 0 16px; }
-      .input-bar { padding: 12px 16px 16px; }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HeteroAgent · 智能客服工作台</title>
+  <meta name="description" content="基于 LangGraph 的多 Agent 客服工作台：意图路由、混合检索、工单处理、合规审查与人工审批，全部在一条对话流内完成。">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0a0c10">
+  <meta property="og:title" content="HeteroAgent · 智能客服工作台">
+  <meta property="og:description" content="意图路由 → 知识检索 / 工单处理 → 合规审查 → 汇总回复。">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    /* 主题在首次绘制前确定，避免闪白 */
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('ha.settings.v2') || '{}');
+        var theme = saved.theme || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (err) { /* keep default dark */ }
+    })();
+  </script>
 </head>
 <body>
-<div class="app">
+  <a class="skip-link" href="#composerInput">跳到输入框</a>
+  <div class="grain" aria-hidden="true"></div>
 
-  <!-- ════ Sidebar ════ -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <div class="logo-mark">🧠</div>
-        <div class="logo-text">
-          <h1>HeteroAgent</h1>
-          <p>Multi-Agent v0.2 · LangGraph 1.x</p>
+  <div class="app" id="app" data-drawer="closed">
+    <!-- ═══ 侧栏 ═══ -->
+    <aside class="rail" id="rail" aria-label="会话与系统信息">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span data-icon="brand" data-icon-size="21"></span></div>
+        <div>
+          <div class="brand-name">HeteroAgent <span>v0.4</span></div>
+          <div class="brand-sub">多 Agent 客服 · LangGraph</div>
         </div>
       </div>
-    </div>
-    <div class="sidebar-section">
-      <button class="new-chat-btn" onclick="clearChat()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        新建对话
-      </button>
-      <div class="section-label">系统架构</div>
-      <div class="arch-card">
-        <h4>Agent Pipeline</h4>
-        <div class="arch-pipeline">
-          <div class="arch-node intent"><span class="dot"></span>意图路由 · Supervisor</div>
-          <div class="arch-arrow">↓</div>
-          <div class="arch-node knowledge"><span class="dot"></span>知识问答 · KnowledgeRAG</div>
-          <div class="arch-node ticket"><span class="dot"></span>工单处理 · TicketHandler</div>
-          <div class="arch-arrow">↓</div>
-          <div class="arch-node compliance"><span class="dot"></span>合规审查 · ComplianceCheck</div>
-        </div>
-      </div>
-      <div class="section-label" style="margin-top:16px">技术栈</div>
-      <div class="arch-card">
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          <span style="background:var(--indigo-bg);color:var(--indigo-soft);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">LangGraph</span>
-          <span style="background:var(--emerald-bg);color:var(--emerald);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">FastAPI</span>
-          <span style="background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">FAISS</span>
-          <span style="background:var(--rose-bg);color:var(--rose);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">Redis</span>
-          <span style="background:var(--cyan-bg);color:var(--cyan);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">OpenTelemetry</span>
-          <span style="background:var(--violet-bg);color:var(--violet);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500">MCP</span>
-        </div>
-      </div>
-    </div>
-    <div class="sidebar-footer">
-      <span class="pulse"></span>
-      系统运行中 · 合规审查已启用
-    </div>
-  </aside>
 
-  <!-- ════ Main ════ -->
-  <div class="main">
-    <div class="topbar">
-      <span class="topbar-session" id="sessionIdLabel">session: —</span>
-      <div class="topbar-actions">
-        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="切换明暗主题">
-          <span class="ico" id="themeIco">☀️</span>
-          <span class="label" id="themeLabel">亮色</span>
-        </button>
-        <button onclick="viewHistory()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          历史
-        </button>
-        <button onclick="clearChat()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          重置
+      <div class="rail-actions">
+        <button class="btn-new" id="newChat" type="button">
+          <span data-icon="plus" data-icon-size="16"></span>
+          新建对话
+          <kbd>Ctrl K</kbd>
         </button>
       </div>
-    </div>
 
-    <div class="chat-scroll" id="chatScroll">
-      <div class="chat-container" id="chatContainer">
-        <div class="welcome" id="welcome">
-          <div class="welcome-glow">💬</div>
-          <h2>欢迎使用 HeteroAgent</h2>
-          <p>我是基于 LangGraph 的多Agent智能客服，集成了意图路由、RAG 知识库、工单处理与合规审查。请问有什么可以帮您？</p>
-          <div class="chip-grid">
-            <div class="chip" onclick="quickSend('理财产品A的收益率是多少？')"><span class="icon">💰</span> 理财产品咨询</div>
-            <div class="chip" onclick="quickSend('我要申请退款')"><span class="icon">💸</span> 申请退款</div>
-            <div class="chip" onclick="quickSend('如何开户？需要什么材料？')"><span class="icon">📋</span> 开户流程</div>
-            <div class="chip" onclick="quickSend('帮我查一下订单状态')"><span class="icon">📦</span> 订单查询</div>
+      <div class="rail-scroll">
+        <div class="rail-section">
+          <div class="rail-label">
+            <span>会话</span>
+            <span class="count" id="convCount">0</span>
           </div>
+          <div class="conv-list" id="convList" role="list"></div>
+          <p class="empty-conv" id="convEmpty">会话记录只保存在这台设备。开始一次对话后，这里会列出历史。</p>
         </div>
-        <div class="typing-row" id="typingRow">
-          <div class="msg-avatar" style="background:var(--avatar-bot);box-shadow:var(--avatar-bot-shadow)">🤖</div>
-          <div class="typing-bubble">
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
+
+        <div class="rail-section">
+          <div class="rail-label"><span>处理链路</span></div>
+          <div class="pipeline-card">
+            <h3>固定拓扑 · 可审计</h3>
+            <div class="pipeline-node" data-node="supervisor_route">
+              <span data-icon="route" data-icon-size="15"></span>
+              <strong>意图路由</strong><em>Supervisor</em>
+            </div>
+            <div class="pipeline-node" data-node="knowledge_rag">
+              <span data-icon="book" data-icon-size="15"></span>
+              <strong>知识检索</strong><em>KnowledgeRAG</em>
+            </div>
+            <div class="pipeline-node" data-node="ticket_handler">
+              <span data-icon="ticket" data-icon-size="15"></span>
+              <strong>工单处理</strong><em>TicketHandler</em>
+            </div>
+            <div class="pipeline-node" data-node="compliance_check">
+              <span data-icon="shield" data-icon-size="15"></span>
+              <strong>合规审查</strong><em>Compliance</em>
+            </div>
+            <div class="pipeline-node" data-node="synthesize">
+              <span data-icon="pen" data-icon-size="15"></span>
+              <strong>汇总回复</strong><em>Synthesize</em>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="input-bar">
-      <div class="input-card" id="inputCard">
-        <textarea id="userInput" placeholder="输入消息…" rows="1" onkeydown="handleKey(event)"></textarea>
-        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
+      <div class="rail-foot" id="healthFoot" data-health="unknown">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="healthText">正在检查服务…</span>
+        <span class="ver" id="healthVer"></span>
+        <button type="button" id="railSettings" aria-label="打开设置" title="设置">
+          <span data-icon="sliders" data-icon-size="14"></span>
         </button>
       </div>
-      <div class="input-footer">
-        <kbd>Enter</kbd> 发送 · <kbd>Shift+Enter</kbd> 换行 · 所有回复经过合规审查
+    </aside>
+
+    <!-- ═══ 工作区 ═══ -->
+    <main class="workspace">
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="railToggle" type="button" aria-label="打开会话列表" aria-controls="rail" aria-expanded="false">
+          <span data-icon="menu" data-icon-size="18"></span>
+        </button>
+        <div class="topbar-title">
+          客服工作台
+          <span class="session-chip" id="sessionChip">session: —</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="themeToggle" type="button" aria-label="切换明暗主题" title="切换主题">
+            <span id="themeIcon"></span>
+          </button>
+          <button class="icon-btn" id="approvalsBtn" type="button" aria-label="待处理审批" aria-controls="drawer" aria-expanded="false" title="待处理审批">
+            <span data-icon="shield" data-icon-size="18"></span>
+            <span class="dot-badge" id="approvalCount" hidden>0</span>
+          </button>
+          <button class="icon-btn" id="settingsBtn" type="button" aria-label="设置" aria-controls="drawer" aria-expanded="false" title="设置">
+            <span data-icon="sliders" data-icon-size="18"></span>
+          </button>
+        </div>
+      </header>
+
+      <div class="banner" id="banner" role="status">
+        <span data-icon="alert" data-icon-size="14"></span>
+        <span id="bannerText">网络已断开，恢复后可以继续发送。</span>
       </div>
-    </div>
+
+      <div class="transcript" id="transcript" role="log" aria-label="对话记录" tabindex="-1">
+        <div class="transcript-inner" id="transcriptInner">
+          <section class="welcome" id="welcome">
+            <div class="welcome-eyebrow"><span class="status-dot" aria-hidden="true"></span>合规审查已启用 · 全链路可审计</div>
+            <h1>一次对话，走完<span class="muted">检索、工单与合规</span></h1>
+            <p class="welcome-lead">意图路由、混合检索（FAISS + BM25）、工单处理与合规审查在同一条链路里完成。命中风险的请求会自动转入人工审批，不会悄悄放过。</p>
+            <div class="welcome-grid" id="welcomeGrid">
+              <button class="prompt-card" type="button" data-prompt="理财产品A的收益率是多少？" style="--i:0">
+                <span data-icon="layers" data-icon-size="16"></span>
+                <span class="pc-title">理财产品 A 的收益率</span>
+                <span class="pc-desc">知识库检索 · 产品 FAQ</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="我要申请退款" style="--i:1">
+                <span data-icon="refresh" data-icon-size="16"></span>
+                <span class="pc-title">申请退款</span>
+                <span class="pc-desc">工单流程 · 售后政策</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="如何开户？需要什么材料？" style="--i:2">
+                <span data-icon="file" data-icon-size="16"></span>
+                <span class="pc-title">开户需要什么材料</span>
+                <span class="pc-desc">知识库检索 · 开户指引</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="帮我查一下订单状态" style="--i:3">
+                <span data-icon="message" data-icon-size="16"></span>
+                <span class="pc-title">查询订单状态</span>
+                <span class="pc-desc">工单处理 · 订单查询</span>
+              </button>
+            </div>
+          </section>
+
+          <div class="messages" id="messages"></div>
+        </div>
+
+      </div>
+
+      <footer class="composer">
+        <button class="jump-latest" id="jumpLatest" type="button" data-visible="false">
+          <span data-icon="chevronDown" data-icon-size="14"></span>
+          最新回复
+        </button>
+        <form class="composer-inner" id="composerForm" autocomplete="off">
+          <div class="composer-card">
+            <textarea class="composer-input" id="composerInput" rows="1" maxlength="8000"
+              placeholder="描述您的问题，或直接粘贴订单号…" aria-label="消息输入框"></textarea>
+            <div class="composer-tools">
+              <button class="stop-btn" id="stopBtn" type="button" aria-label="停止生成" title="停止生成">
+                <span data-icon="stop" data-icon-size="14"></span>
+              </button>
+              <button class="send-btn" id="sendBtn" type="submit" aria-label="发送消息" title="发送">
+                <span data-icon="arrowUp" data-icon-size="18"></span>
+              </button>
+            </div>
+          </div>
+          <div class="composer-foot">
+            <kbd>Enter</kbd><span>发送</span>
+            <span class="sep">·</span>
+            <kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span>换行</span>
+            <span class="sep hint-extra">·</span>
+            <span class="hint-extra">所有回复都会经过合规审查</span>
+            <span class="counter" id="charCount"></span>
+          </div>
+        </form>
+      </footer>
+    </main>
+
+    <!-- ═══ 抽屉 ═══ -->
+    <aside class="drawer" id="drawer" aria-label="详情面板">
+      <div class="drawer-head">
+        <h2 id="drawerTitle">会话历史</h2>
+        <button class="icon-btn" id="drawerClose" type="button" aria-label="关闭面板">
+          <span data-icon="close" data-icon-size="18"></span>
+        </button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="面板切换">
+        <button class="tab" type="button" role="tab" id="tab-history" data-tab="history" aria-selected="true" aria-controls="panel-history">历史<span class="num" id="histCount"></span></button>
+        <button class="tab" type="button" role="tab" id="tab-approvals" data-tab="approvals" aria-selected="false" aria-controls="panel-approvals">审批<span class="num" id="apprCount">0</span></button>
+        <button class="tab" type="button" role="tab" id="tab-metrics" data-tab="metrics" aria-selected="false" aria-controls="panel-metrics">指标</button>
+        <button class="tab" type="button" role="tab" id="tab-settings" data-tab="settings" aria-selected="false" aria-controls="panel-settings">设置</button>
+      </div>
+      <div class="drawer-body">
+        <section class="panel" id="panel-history" data-panel="history" data-active="true" role="tabpanel" aria-labelledby="tab-history"></section>
+        <section class="panel" id="panel-approvals" data-panel="approvals" role="tabpanel" aria-labelledby="tab-approvals"></section>
+        <section class="panel" id="panel-metrics" data-panel="metrics" role="tabpanel" aria-labelledby="tab-metrics"></section>
+        <section class="panel" id="panel-settings" data-panel="settings" role="tabpanel" aria-labelledby="tab-settings"></section>
+      </div>
+    </aside>
+
+    <div class="scrim" id="scrim" hidden></div>
   </div>
-</div>
 
-<script>
-/* ═══════════════════════════════════════
-   Theme
-   ═══════════════════════════════════════ */
-const html = document.documentElement;
-const themeIco  = document.getElementById('themeIco');
-const themeLabel= document.getElementById('themeLabel');
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <p id="liveStatus" class="visually-hidden" aria-live="polite"></p>
 
-function applyTheme(t) {
-  html.setAttribute('data-theme', t);
-  if (t === 'light') {
-    themeIco.textContent = '🌙'; themeLabel.textContent = '暗色';
-  } else {
-    themeIco.textContent = '☀️'; themeLabel.textContent = '亮色';
-  }
-  localStorage.setItem('ha_theme', t);
-}
-
-function toggleTheme() {
-  const cur = html.getAttribute('data-theme');
-  applyTheme(cur === 'dark' ? 'light' : 'dark');
-}
-
-// Init theme: saved > system pref > dark
-(function() {
-  const saved = localStorage.getItem('ha_theme');
-  if (saved) { applyTheme(saved); }
-  else if (window.matchMedia('(prefers-color-scheme: light)').matches) { applyTheme('light'); }
-  else { applyTheme('dark'); }
-})();
-
-/* ═══════════════════════════════════════
-   Chat
-   ═══════════════════════════════════════ */
-const API      = window.location.origin;
-const scrollEl = document.getElementById('chatScroll');
-const container= document.getElementById('chatContainer');
-const welcome  = document.getElementById('welcome');
-const typingRow= document.getElementById('typingRow');
-const input    = document.getElementById('userInput');
-const sendBtn  = document.getElementById('sendBtn');
-const sidLabel = document.getElementById('sessionIdLabel');
-
-let sessionId = localStorage.getItem('ha_sid') || crypto.randomUUID();
-let isSending = false;
-
-sidLabel.textContent = 'session: ' + sessionId.slice(0,8) + '…';
-
-input.addEventListener('input', () => {
-  input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 140) + 'px';
-});
-
-function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
-function quickSend(t) { input.value = t; sendMessage(); }
-function fmtTime() {
-  const d = new Date();
-  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-}
-
-async function sendMessage() {
-  const text = input.value.trim();
-  if (!text || isSending) return;
-  isSending = true; sendBtn.disabled = true;
-  if (welcome) welcome.style.display = 'none';
-
-  addMsg('user', text);
-  input.value = ''; input.style.height = 'auto';
-  typingRow.classList.add('active'); scroll();
-
-  try {
-    const resp = await fetch(API + '/api/chat/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, user_id: 'web-user', session_id: sessionId })
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // 按 SSE data: 行解析
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // 保留不完整的行
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const evt = JSON.parse(line.slice(6));
-          if (evt.type === 'session' && evt.session_id) {
-            sessionId = evt.session_id;
-            localStorage.setItem('ha_sid', sessionId);
-            sidLabel.textContent = 'session: ' + sessionId.slice(0,8) + '…';
-          } else if (evt.type === 'stage') {
-            // 更新 typing 提示为当前阶段
-            const tip = typingRow.querySelector('.typing-bubble');
-            if (tip) tip.textContent = evt.label || '处理中…';
-          } else if (evt.type === 'token') {
-            appendToken(evt.text || '');
-          } else if (evt.type === 'response') {
-            typingRow.classList.remove('active');
-            clearStream();
-            addMsg('bot', evt.response, evt.intent, evt.compliance_passed);
-            if (evt.approval_id) addApprovalCard(evt.approval_id, evt.intent);
-          } else if (evt.type === 'error') {
-            typingRow.classList.remove('active');
-            addMsg('bot', '⚠️ ' + (evt.message || '处理异常'), 'error', false);
-          } else if (evt.type === 'done') {
-            typingRow.classList.remove('active');
-          }
-        } catch (_) { /* 忽略解析错误 */ }
-      }
-      scroll();
-    }
-  } catch (e) {
-    typingRow.classList.remove('active');
-    addMsg('bot', '⚠️ 请求失败：' + e.message, 'error', false);
-  }
-  isSending = false; sendBtn.disabled = false; input.focus(); scroll();
-}
-
-/* ── 流式输出：token 先落到临时气泡，最终 response 到达时用权威结果替换 ── */
-let streamRow = null, streamBubble = null, streamText = '';
-
-function startStream() {
-  if (streamRow) return;
-  typingRow.classList.remove('active');
-  streamRow = document.createElement('div'); streamRow.className = 'msg bot';
-  const av = document.createElement('div'); av.className = 'msg-avatar'; av.textContent = '🤖';
-  const body = document.createElement('div'); body.className = 'msg-body';
-  streamBubble = document.createElement('div'); streamBubble.className = 'msg-bubble'; streamBubble.textContent = '';
-  body.appendChild(streamBubble);
-  streamRow.appendChild(av); streamRow.appendChild(body);
-  container.insertBefore(streamRow, typingRow);
-  streamText = '';
-}
-
-function appendToken(t) {
-  if (!t) return;
-  startStream();
-  streamText += t;
-  streamBubble.textContent = streamText;
-  scroll();
-}
-
-function clearStream() {
-  if (streamRow) streamRow.remove();
-  streamRow = null; streamBubble = null; streamText = '';
-}
-
-function addMsg(role, text, intent, compliance) {
-  const row = document.createElement('div'); row.className = 'msg ' + role;
-  const av = document.createElement('div'); av.className = 'msg-avatar'; av.textContent = role === 'user' ? '👤' : '🤖';
-  const body = document.createElement('div'); body.className = 'msg-body';
-  const bubble = document.createElement('div'); bubble.className = 'msg-bubble'; bubble.textContent = text;
-  body.appendChild(bubble);
-
-  if (role === 'bot' && intent && intent !== 'error') {
-    const meta = document.createElement('div'); meta.className = 'msg-meta';
-    const iMap = { 'knowledge_rag':'📚 知识问答','ticket_handler':'🎫 工单处理','compliance':'🛡️ 合规审查','unknown':'❓ 未知' };
-    const ib = document.createElement('span'); ib.className = 'badge intent'; ib.innerHTML = '<span class="ico">◆</span> ' + (iMap[intent] || intent); meta.appendChild(ib);
-    const cb = document.createElement('span'); cb.className = 'badge ' + (compliance ? 'pass' : 'fail'); cb.innerHTML = '<span class="ico">' + (compliance ? '✓' : '✗') + '</span> ' + (compliance ? '合规通过' : '合规拦截'); meta.appendChild(cb);
-    body.appendChild(meta);
-  }
-
-  const ts = document.createElement('div'); ts.className = 'msg-time'; ts.textContent = fmtTime(); body.appendChild(ts);
-  row.appendChild(av); row.appendChild(body);
-  container.insertBefore(row, typingRow); scroll();
-}
-
-/* ── HITL：在聊天流里直接审批，不必再开 Swagger/curl ── */
-function addApprovalCard(approvalId, intent) {
-  const row = document.createElement('div'); row.className = 'msg bot';
-  const av = document.createElement('div'); av.className = 'msg-avatar'; av.textContent = '🛡️';
-  const body = document.createElement('div'); body.className = 'msg-body';
-  const card = document.createElement('div'); card.className = 'approval-card';
-
-  const title = document.createElement('div');
-  title.textContent = '该请求触发合规审查，需要人工确认（审批编号 ' + approvalId.slice(0, 8) + '…）';
-
-  const actions = document.createElement('div'); actions.className = 'approval-actions';
-  const okBtn = document.createElement('button'); okBtn.className = 'primary'; okBtn.textContent = '✅ 审批通过';
-  const noBtn = document.createElement('button'); noBtn.className = 'danger'; noBtn.textContent = '❌ 拒绝';
-  actions.appendChild(okBtn); actions.appendChild(noBtn);
-
-  const status = document.createElement('div'); status.className = 'approval-status';
-
-  card.appendChild(title); card.appendChild(actions); card.appendChild(status);
-  body.appendChild(card); row.appendChild(av); row.appendChild(body);
-  container.insertBefore(row, typingRow); scroll();
-
-  async function decide(kind) {
-    okBtn.disabled = noBtn.disabled = true;
-    status.textContent = '处理中…';
-    try {
-      const resp = await fetch(API + '/api/approvals/' + approvalId + '/' + kind, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: '前端审批' })
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
-      actions.remove(); status.remove();
-      addMsg('bot', data.response, intent, kind === 'approve');
-    } catch (e) {
-      status.textContent = '⚠️ ' + (e.message || '审批失败');
-      okBtn.disabled = noBtn.disabled = false;
-    }
-  }
-
-  okBtn.onclick = () => decide('approve');
-  noBtn.onclick = () => decide('reject');
-}
-
-function scroll() { requestAnimationFrame(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }); }
-
-function clearChat() {
-  container.querySelectorAll('.msg, .msg-time').forEach(e => e.remove());
-  sessionId = crypto.randomUUID(); localStorage.setItem('ha_sid', sessionId);
-  sidLabel.textContent = 'session: ' + sessionId.slice(0,8) + '…';
-  if (welcome) welcome.style.display = '';
-  input.focus();
-}
-
-async function viewHistory() {
-  try {
-    const r = await fetch(API + '/api/history/' + sessionId);
-    const d = await r.json(); const msgs = d.messages || [];
-    if (!msgs.length) { alert('当前会话暂无历史消息'); return; }
-    alert('当前会话共 ' + msgs.length + ' 条消息\n\n' + msgs.map(m => (m.role==='user'?'👤 ':'🤖 ') + m.content).join('\n\n'));
-  } catch (e) { alert('获取历史失败: ' + e.message); }
-}
-
-input.focus();
-</script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

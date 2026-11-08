@@ -57,13 +57,13 @@
 | T-P2-07 | 工程与多副本 | ✅ | compose / redis 限流 / redis 审批 / Postgres 检查点 ✅；指标经 OTel Metrics + OTLP 可跨副本聚合（`OTEL_METRICS_ENABLED=true`） |
 | T-P2-08 | 模型化护栏 | ✅ | `security/guardrail.py`（默认关闭，需配置 endpoint） |
 
-## P3 — 按需扩展（1 ✅ / 5 ⛔）
+## P3 — 按需扩展（2 ✅ / 4 ⛔）
 
 | ID | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | T-P3-01 | A2A | ⛔ | 无跨组织互调需求 |
 | T-P3-02 | 向量库迁移 | ⛔ | 同 T-P2-03 |
-| T-P3-03 | 前端组件化 / 审批台 | ⛔ | 当前单文件 UI + 聊天内审批卡片（最小可用） |
+| T-P3-03 | 前端组件化 / 审批台 | ✅ | `static/` 拆为 HTML + 设计令牌 CSS + 原生 ES 模块（零构建）；抽屉内含服务端历史、待审批队列（含审计链校验）、运行指标与设置；聊天流内审批卡片保留 |
 | T-P3-04 | 成本优化 | ✅ | 模型分级（路由走轻模型）+ 语义缓存（`memory/semantic_cache.py`，ADR-0009）+ 每用户自然日预算 `security/budget.py` |
 | T-P3-05 | MCP Tasks | ⛔ | 无长任务场景 |
 | T-P3-06 | 多模态 | ⛔ | 无语音/图片工单需求 |

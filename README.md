@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-394%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
 ![聊天界面](docs/screenshots/chat-ui.png)
@@ -30,6 +30,7 @@
 
 - [能力概览](#能力概览)
 - [架构](#架构)
+- [前端工作台](#前端工作台)
 - [快速开始](#快速开始)
 - [API](#api)
 - [配置](#配置)
@@ -50,6 +51,7 @@
 | 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |
 | 安全 | 注入检测前置（NFKC/零宽对抗归一化）+ 可选模型护栏链、API Key 鉴权、全端点限流（含管理端点）、长度上限 |
 | 人工 | 合规不通过 → 图内 `interrupt()` 暂停，审批后 `Command(resume=...)` 恢复；聊天界面内可直接通过/拒绝；哈希链审计 |
+| 前端 | 原生 ES 模块（零构建、零外链、离线可用）；SSE 阶段进度 + token 增量渲染；会话内与抽屉内审批、服务端历史、运行指标、设置（API Key / user_id / AG-UI）；明暗双主题与移动端抽屉 |
 | 记忆 | Redis 短期记忆 + 跨会话用户事实（LangGraph Store，org/user 隔离）+ 有界 LRU embedding 缓存；可选语义缓存 |
 | 成本 | 主/轻模型分级、每用户自然日预算硬上限（requests/tokens）、用量响应头 |
 | 观测 | OTel GenAI 语义约定（`gen_ai.*`）、P50/P95/P99、成本累计、Prometheus 导出、JSON 结构化日志（request_id 贯穿）、评估结果回挂 trace |
@@ -78,6 +80,21 @@ graph TB
 1. **注入检测先于一切 LLM 调用**（命中即 400，不进入图）。
 2. **合规审查不可跳过**：所有子 Agent 产出都必须经过合规节点。
 3. **失败语义显式**：embedding 不可用直接抛错（`EmbeddingUnavailableError`），不生成伪向量；合规解析失败一律拦截。
+
+## 前端工作台
+
+工作台把链路状态放进同一条对话流：阶段进度、合规拦截、人工审批、服务端历史与运行指标。零构建（原生 ES 模块）、零外链，断网也能渲染。
+
+[![工作台 · 暗色](docs/screenshots/frontend-home-dark.png)](docs/FRONTEND.md)
+
+| 能力 | 说明 |
+| --- | --- |
+| 双流渲染 | 节点级 stage 进度 + token 级增量；停止、重试、吸底跟随 |
+| 审批台 | 会话内审批卡 + 抽屉审批队列 + 哈希链校验 |
+| 可观测 | 服务端历史（STM）、节点 P95 / token / 成本、MCP 熔断状态 |
+| 零依赖 | 系统字体栈 + 内联 SVG 图标；首屏 0 个外部请求，DOMContentLoaded ≈ 164ms |
+
+完整说明（截图、状态机、SSE / AG-UI 契约、无障碍与验证）见 [docs/FRONTEND.md](docs/FRONTEND.md)。
 
 ## 快速开始
 
@@ -188,16 +205,20 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 ├── tooling/                 # MCP 官方 SDK 工具服务（P1）
 ├── knowledge_base/          # 120 篇合成演示语料（产品/账户/售后各 40）
 ├── persistence/             # 统一工单仓储（MCP 工具 + 降级路径共用）
-├── static/index.html        # 单文件聊天前端
+├── static/                  # 前端工作台（语义化 HTML + 设计令牌 + 原生 ES 模块）
+│   ├── index.html           # 骨架：会话侧栏 / 对话流 / 历史·审批·指标·设置抽屉
+│   ├── css/app.css          # 设计系统：明暗双主题、单一强调色、响应式
+│   └── js/                  # app.js 编排 · api.js SSE 客户端 · markdown.js 安全渲染
+│                            # · store.js 本地持久化 · icons.js 图标集
 ├── scripts/check.py         # 提交前检查（ruff + pytest），pre-commit 钩子调用
-├── tests/                   # 384 项离线测试
+├── tests/                   # 394 项离线测试（含前端契约测试）
 └── docs/                    # 升级方案、评估报告、截图
 ```
 
 ## 质量保障
 
 ```bash
-python -m pytest -q          # 384 passed（全部离线，无需 API Key）
+python -m pytest -q          # 394 passed（全部离线，无需 API Key）
 python -m ruff check .       # All checks passed
 make hooks                   # 启用本地 pre-commit（GitHub CI 未启用时的兜底）
 python -m pytest -q --cov    # 覆盖率约 82%（口径见 pyproject.toml）
