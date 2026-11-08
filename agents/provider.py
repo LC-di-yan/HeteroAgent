@@ -95,11 +95,17 @@ def build_chat_model(settings: Any, *, tier: Tier = "main") -> Any:
     from langchain_openai import ChatOpenAI
 
     spec = ProviderSpec.for_tier(settings, tier)
+    api_key = getattr(settings, "openai_api_key", "") or None
+    base_url = getattr(settings, "openai_base_url", "") or None
+    if tier == "light":
+        # 路由/分类可以单独指向更小更快的模型供应商（例如决策模型）
+        api_key = getattr(settings, "light_api_key", "") or api_key
+        base_url = getattr(settings, "light_base_url", "") or base_url
     kwargs: dict[str, Any] = {
         "model": spec.model,
         "temperature": spec.temperature,
-        "api_key": getattr(settings, "openai_api_key", "") or None,
-        "base_url": getattr(settings, "openai_base_url", "") or None,
+        "api_key": api_key,
+        "base_url": base_url,
         "timeout": spec.timeout,
         "max_retries": spec.max_retries,
         "streaming": spec.streaming,

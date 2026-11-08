@@ -154,6 +154,7 @@ export const STAGE_META = {
   knowledge_rag: { label: '知识检索', icon: 'book' },
   ticket_handler: { label: '工单处理', icon: 'ticket' },
   compliance_check: { label: '合规审查', icon: 'shield' },
+  smalltalk: { label: '寒暄回应', icon: 'message' },
   synthesize: { label: '生成回复', icon: 'pen' },
 };
 

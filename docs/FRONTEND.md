@@ -25,6 +25,8 @@ DEMO_MODE=true python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 已完成节点落成左侧 pill，当前节点留在状态行；token 到达后逐字渲染，最终结果再用 Markdown 渲染一次。
 
+问候/感谢/能力询问走后端的 `smalltalk` 快路径（不检索、不调模型），阶段轨里显示为「寒暄回应」；命中后只保留耗时标签，不显示意图与合规徽章。
+
 ![流式阶段](screenshots/frontend-streaming.png)
 
 ### 回答与元信息

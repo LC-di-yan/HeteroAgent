@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     model_name: str = "gpt-5.1"
     light_model_name: str = ""          # 空 → 复用 model_name
+    # 轻模型（路由/分类）可走独立供应商：只配 base_url/key 时生效，留空复用主模型
+    light_api_key: str = ""
+    light_base_url: str = ""
     temperature: float = 0.0
     llm_timeout_seconds: float = 30.0
     # 节点级超时：RAG 节点串行发起 改写→embedding→重排→生成→自检 共 5 次网络调用，

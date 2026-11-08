@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 class RouteDecision(BaseModel):
     """Supervisor 路由决策。"""
 
-    target: Literal["knowledge_rag", "ticket_handler", "compliance_checker"] = Field(
-        default="knowledge_rag", description="分发到的子 Agent"
+    target: Literal["knowledge_rag", "ticket_handler", "compliance_checker", "unknown"] = Field(
+        default="knowledge_rag", description="分发到的子 Agent；unknown 表示与业务无关，需要澄清"
     )
     intent_category: Literal[
         "consultation", "complaint", "transaction", "account", "compliance", "unknown"

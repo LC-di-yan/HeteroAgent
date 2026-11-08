@@ -53,6 +53,7 @@ _STAGE_LABELS = {
     "knowledge_rag": "📚 正在检索知识库…",
     "ticket_handler": "🎫 正在处理工单…",
     "compliance_check": "🛡️ 正在进行合规审查…",
+    "smalltalk": "💬 正在回应…",
     "synthesize": "✍️ 正在生成回复…",
 }
 
@@ -715,6 +716,7 @@ def create_app(
             "retry_count": 0,
             "approval_id": None,
             "approval_decision": None,
+            "smalltalk_kind": "",
         }
         config = {"configurable": {"thread_id": f"{user_id}:{session_id}"[:255]}}
 

@@ -283,6 +283,7 @@ function intentMeta(intent) {
     knowledge_rag: { icon: 'book', label: '知识问答' },
     ticket_handler: { icon: 'ticket', label: '工单处理' },
     compliance: { icon: 'shield', label: '合规审查' },
+    smalltalk: { icon: 'message', label: '寒暄' },
     unknown: { icon: 'info', label: '未识别意图' },
     error: { icon: 'alert', label: '异常' },
   };
@@ -337,7 +338,7 @@ function messageNode(msg) {
   const meta = msg.meta || {};
   if (role !== 'user' && state.settings.showMeta) {
     if (msg.intent) foot.appendChild(intentTag(msg.intent));
-    if (msg.compliance === true) foot.appendChild(tag('ok', 'shieldCheck', '合规通过'));
+    if (msg.compliance === true && msg.intent !== 'smalltalk') foot.appendChild(tag('ok', 'shieldCheck', '合规通过'));
     if (msg.compliance === false) {
       foot.appendChild(meta.approvalId
         ? tag('warn', 'clock', '转人工审批')

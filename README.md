@@ -47,7 +47,7 @@
 
 | 域 | 能力 |
 | --- | --- |
-| 编排 | LangGraph 固定拓扑（可预测/可审计），路由/工单由 Pydantic schema 约束，异常类型化重试 |
+| 编排 | LangGraph 固定拓扑（可预测/可审计），路由/工单由 Pydantic schema 约束，异常类型化重试；寒暄/澄清走规则快路径（不查库、不调模型） |
 | 工具 | 官方 MCP SDK（`tooling/`）+ `create_agent` 工具循环；工单与知识检索都经工具调用，每次调用产生 `execute_tool` span |
 | 检索 | FAISS 向量 + BM25（单字+双字混合分词）混合检索 + RRF 融合；分数归一化到 [0,1]；支持 Contextual Retrieval 入库 |
 | 合规 | 规则引擎（违规用语 + PII）→ LLM 深审；**解析失败 fail-closed**；逐条结果分别脱敏 |

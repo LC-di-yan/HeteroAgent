@@ -20,6 +20,7 @@ from langgraph.graph.message import add_messages
 
 from agents.llm_utils import run_structured
 from agents.schemas import RouteDecision
+from agents.smalltalk import KIND_CLARIFY, build_reply, classify_smalltalk
 from config import Settings
 from config import settings as default_settings
 from tracing.otel_config import trace_agent_call
@@ -55,12 +56,15 @@ class AgentState(TypedDict):
     retry_count: int
     approval_id: str | None
     approval_decision: dict[str, Any] | None
+    smalltalk_kind: str
 
 
 # ─── 路由解析 ───
 
 ROUTE_KNOWLEDGE = "knowledge_rag"
 ROUTE_TICKET = "ticket_handler"
+# 寒暄/澄清：不查库、不调 LLM，直接给建议式回复
+ROUTE_SMALLTALK = "smalltalk"
 # compliance 类意图改走知识库：原实现直接跳合规节点，没有任何业务 Agent 产出，用户会收到空回复
 _ROUTE_ALIASES = {
     "ticket_handler": ROUTE_TICKET,
@@ -76,24 +80,24 @@ def parse_route(text: str) -> str:
     """从模型自由文本中提取路由目标；无法识别时兜底 knowledge_rag。"""
     cleaned = (text or "").strip().lower().replace("```", " ")
     # 先匹配更具体的 ticket_handler，再匹配 knowledge_rag，最后 compliance*
-    for token in ("ticket_handler", "knowledge_rag", "compliance_checker", "compliance"):
+    for token in ("ticket_handler", "knowledge_rag", "unknown", "compliance_checker", "compliance"):
         if token in cleaned:
-            return _ROUTE_ALIASES.get(token, ROUTE_KNOWLEDGE)
+            return "unknown" if token == "unknown" else _ROUTE_ALIASES.get(token, ROUTE_KNOWLEDGE)
     return ROUTE_KNOWLEDGE
 
 
-SUPERVISOR_SYSTEM_PROMPT = """你是一个智能客服系统的 Supervisor（主管编排 Agent）。
+SUPERVISOR_SYSTEM_PROMPT = """你是智能客服系统的 Supervisor（主管编排 Agent）。
 
-可用的子 Agent（只返回其中之一，不要输出任何其他文字）：
-- knowledge_rag: 知识库问答 —— 产品咨询、收益率、开户/退款政策、风险说明、合规政策咨询
-- ticket_handler: 工单处理 —— 退款申请、理赔、开户办理、投诉登记、查询工单进度
+判断用户这句话该交给谁，只输出一个单词：
+- knowledge_rag：咨询信息 —— 产品/收益/利率、政策、流程、所需材料、风险说明。
+  例：「如何开户？需要什么材料？」「退款政策是什么」「理财收益多少」「开户流程是怎样的」
+- ticket_handler：实际办理或查询单据 —— 我要退款/开户、提交投诉、查订单、催工单。
+  例：「我要申请退款」「帮我查订单状态」「帮我催一下工单」
+- unknown：与业务无关（天气、闲聊、常识）或无法判断
 
-路由规则：
-- 咨询信息、问政策/收益/风险 → knowledge_rag
-- 要办理业务（退款/开户/理赔/投诉）或查工单 → ticket_handler
-- 涉及合规政策、监管要求 → knowledge_rag
+区分要点：问「怎么/是什么/需要什么」→ knowledge_rag；说「我要/帮我办/查我的」→ ticket_handler。
 
-只输出一个单词：knowledge_rag 或 ticket_handler
+只输出一个单词：knowledge_rag、ticket_handler 或 unknown
 """
 
 
@@ -165,11 +169,28 @@ class SupervisorNode:
         self.settings = settings
         self.approval_store = approval_store
 
+    @staticmethod
+    def _last_user_text(messages: list[BaseMessage]) -> str:
+        for message in reversed(messages):
+            if getattr(message, "type", "") == "human" or isinstance(message, HumanMessage):
+                return str(getattr(message, "content", "") or "")
+        # 测试替身/自定义消息类型可能没有 type 字段：退化为最后一条文本
+        for message in reversed(messages):
+            content = getattr(message, "content", "")
+            if isinstance(content, str) and content.strip():
+                return content
+        return ""
+
     @trace_agent_call("supervisor")
     async def route_decision(self, state: AgentState) -> AgentState:
         messages = state.get("messages") or []
         if not messages:
             return {**state, "intent": ROUTE_KNOWLEDGE}
+
+        # 规则快路径：问候/感谢/能力询问/过短输入不进入检索，也不花一次模型调用
+        smalltalk_kind = classify_smalltalk(self._last_user_text(messages))
+        if smalltalk_kind is not None:
+            return {**state, "intent": ROUTE_SMALLTALK, "smalltalk_kind": smalltalk_kind}
 
         routing_prompt = [
             SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
@@ -179,14 +200,30 @@ class SupervisorNode:
         # 首选结构化输出（T-P1-03）：target 由 schema 限定，避免自由文本歧义
         decision = await run_structured(self.llm, RouteDecision, routing_prompt, label="route")
         if decision is not None:
+            # 模型判断"与业务无关"时给澄清回复，而不是去检索一个不存在的答案
+            if decision.target == "unknown":
+                return {**state, "intent": ROUTE_SMALLTALK, "smalltalk_kind": KIND_CLARIFY}
             return {**state, "intent": _ROUTE_ALIASES.get(decision.target, ROUTE_KNOWLEDGE)}
 
         response = await self.llm.ainvoke(routing_prompt)
         content = getattr(response, "content", "") or ""
         intent = parse_route(content)
+        if intent == "unknown":
+            return {**state, "intent": ROUTE_SMALLTALK, "smalltalk_kind": KIND_CLARIFY}
         if intent not in _VALID_ROUTES:  # 防御性兜底
             intent = ROUTE_KNOWLEDGE
         return {**state, "intent": intent}
+
+    @trace_agent_call("supervisor_smalltalk")
+    async def smalltalk_response(self, state: AgentState) -> AgentState:
+        """寒暄/澄清回复：模板固定、不调用模型，直接进入聚合。"""
+        kind = state.get("smalltalk_kind")
+        reply = build_reply(kind if isinstance(kind, str) else KIND_CLARIFY)
+        return {
+            **state,
+            "compliance_passed": True,
+            "sub_results": {**state.get("sub_results", {}), "smalltalk": reply},
+        }
 
     @trace_agent_call("compliance_gate")
     async def compliance_gate(self, state: AgentState) -> AgentState:
@@ -287,7 +324,11 @@ class SupervisorNode:
 
 def route_to_agent(state: AgentState) -> str:
     intent = state.get("intent", ROUTE_KNOWLEDGE)
-    return ROUTE_TICKET if intent == ROUTE_TICKET else ROUTE_KNOWLEDGE
+    if intent == ROUTE_TICKET:
+        return ROUTE_TICKET
+    if intent == ROUTE_SMALLTALK:
+        return ROUTE_SMALLTALK
+    return ROUTE_KNOWLEDGE
 
 
 def _build_checkpointer(settings: Settings):
@@ -449,6 +490,7 @@ def create_supervisor_graph(
 
     graph = StateGraph(AgentState)
     graph.add_node("supervisor_route", supervisor.route_decision)
+    graph.add_node(ROUTE_SMALLTALK, supervisor.smalltalk_response)
     graph.add_node("knowledge_rag", _wrap_with_timeout(ROUTE_KNOWLEDGE, knowledge_agent.process, settings))
     graph.add_node("ticket_handler", _wrap_with_timeout(ROUTE_TICKET, ticket_agent.process, settings))
     graph.add_node("compliance_check", _wrap_with_timeout("compliance_check", compliance_agent.process, settings))
@@ -459,10 +501,16 @@ def create_supervisor_graph(
     graph.add_conditional_edges(
         "supervisor_route",
         route_to_agent,
-        {ROUTE_KNOWLEDGE: ROUTE_KNOWLEDGE, ROUTE_TICKET: ROUTE_TICKET},
+        {
+            ROUTE_KNOWLEDGE: ROUTE_KNOWLEDGE,
+            ROUTE_TICKET: ROUTE_TICKET,
+            ROUTE_SMALLTALK: ROUTE_SMALLTALK,
+        },
     )
     graph.add_edge(ROUTE_KNOWLEDGE, "compliance_check")
     graph.add_edge(ROUTE_TICKET, "compliance_check")
+    # 模板回复没有模型产出，只做模板级自检，直接进入聚合（见 agents/smalltalk.py）
+    graph.add_edge(ROUTE_SMALLTALK, "synthesize")
     graph.add_edge("compliance_check", "compliance_gate")
     graph.add_edge("compliance_gate", "synthesize")
     graph.add_edge("synthesize", END)
