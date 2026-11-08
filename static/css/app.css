@@ -724,7 +724,7 @@ kbd {
 .tag[data-mono="true"] { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0; }
 
 .msg-tools {
-  margin-left: auto;
+  margin-left: 2px;
   display: flex;
   align-items: center;
   gap: 2px;

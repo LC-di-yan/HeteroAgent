@@ -34,6 +34,8 @@ def _render_index() -> str:
     html = html.replace('href="css/app.css"', 'href="assets/app.css"')
     html = html.replace('href="favicon.svg"', 'href="assets/favicon.svg"')
     html = html.replace('href="manifest.webmanifest"', 'href="assets/manifest.webmanifest"')
+    # 演示页要说清楚自己是脚本化回复，避免被误认为真实模型
+    html = html.replace('合规审查已启用 · 全链路可审计', '静态演示 · 回复由浏览器脚本生成')
     marker = '  <script type="module" src="js/app.js"></script>'
     if marker not in html:
         raise SystemExit("index.html 中的模块入口发生变化，请更新 build_demo.py")

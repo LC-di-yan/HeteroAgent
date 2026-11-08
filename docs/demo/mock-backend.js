@@ -98,6 +98,34 @@
       text: '订单 **SO-20261106-58D2** 当前状态：已发货。\n\n- 承运商：顺丰速运\n- 预计送达：11 月 9 日\n- 收货地址：已按用户档案脱敏显示\n\n如需修改地址，请在签收前提交工单。',
       tokens: ['订单 **SO-20261106-58D2** 当前状态：已发货。\n\n', '- 承运商：顺丰速运\n', '- 预计送达：11 月 9 日\n', '- 收货地址：已按用户档案脱敏显示\n\n', '如需修改地址，请在签收前提交工单。'],
     },
+    greeting: {
+      intent: '',
+      stages: ['supervisor_route'],
+      quiet: true,
+      text: '你好，我是 HeteroAgent 客服助手。\n\n可以直接说问题，比如：\n\n- 理财产品 A 的收益率\n- 申请退款\n- 开户需要什么材料\n- 查询订单状态',
+      tokens: ['你好，我是 HeteroAgent 客服助手。\n\n', '可以直接说问题，比如：\n\n', '- 理财产品 A 的收益率\n', '- 申请退款\n', '- 开户需要什么材料\n', '- 查询订单状态'],
+    },
+    thanks: {
+      intent: '',
+      stages: [],
+      quiet: true,
+      text: '不客气，还有其他问题随时说。',
+      tokens: ['不客气，还有其他问题随时说。'],
+    },
+    help: {
+      intent: '',
+      stages: ['supervisor_route'],
+      quiet: true,
+      text: '我能做的事情：\n\n- 查产品与政策（知识库检索）\n- 创建售后工单（退款等）\n- 查询订单状态\n- 高风险请求转人工审批\n\n演示版由浏览器脚本驱动，只覆盖这几类场景。',
+      tokens: ['我能做的事情：\n\n', '- 查产品与政策（知识库检索）\n', '- 创建售后工单（退款等）\n', '- 查询订单状态\n', '- 高风险请求转人工审批\n\n', '演示版由浏览器脚本驱动，只覆盖这几类场景。'],
+    },
+    unknown: {
+      intent: '',
+      stages: ['supervisor_route'],
+      quiet: true,
+      text: '我没太理解这个问题。\n\n演示版目前覆盖：\n\n- 理财产品收益\n- 退款 / 售后\n- 开户材料\n- 订单查询\n\n换个说法试试；真实项目里这类输入会走意图路由并给出澄清。',
+      tokens: ['我没太理解这个问题。\n\n', '演示版目前覆盖：\n\n', '- 理财产品收益\n', '- 退款 / 售后\n', '- 开户材料\n', '- 订单查询\n\n', '换个说法试试；真实项目里这类输入会走意图路由并给出澄清。'],
+    },
     product: {
       intent: 'knowledge_rag',
       stages: ['supervisor_route', 'knowledge_rag', 'compliance_check', 'synthesize'],
@@ -107,11 +135,17 @@
   };
 
   function pick(message) {
-    if (/保证|稳赚|零风险|保本|保息/.test(message)) return 'guarantee';
-    if (/退款|退货|售后/.test(message)) return 'refund';
-    if (/开户|开通|材料/.test(message)) return 'account';
-    if (/订单|物流|发货/.test(message)) return 'order';
-    return 'product';
+    var text = String(message || '').trim();
+    if (!text) return 'unknown';
+    if (/^(你好|您好|hi|hello|哈喽|哈啰|嗨|在吗|在么|早上好|上午好|下午好|晚上好)[\s!！。.~～,，]*$/i.test(text)) return 'greeting';
+    if (/^(谢谢|感谢|多谢|辛苦|thx|thanks)[\s!！。.~～,，]*$/i.test(text)) return 'thanks';
+    if (/你是谁|你能做什么|能做什么|有什么功能|怎么用|使用说明|帮助|help/i.test(text)) return 'help';
+    if (/保证|稳赚|零风险|保本|保息/.test(text)) return 'guarantee';
+    if (/退款|退货|售后/.test(text)) return 'refund';
+    if (/开户|开通|材料/.test(text)) return 'account';
+    if (/订单|物流|发货|快递/.test(text)) return 'order';
+    if (/理财|收益|利率|产品|基金/.test(text)) return 'product';
+    return 'unknown';
   }
 
   function chat(body) {
@@ -124,11 +158,12 @@
     var script = SCRIPTS[key];
     var items = [];
     var intent = script.intent;
+    var quiet = !!script.quiet;
 
     items.push({ delay: 120, payload: { type: 'session', session_id: sid } });
     script.stages.forEach(function (node, index) {
       items.push({
-        delay: index === 0 ? 260 : 420,
+        delay: index === 0 ? (quiet ? 150 : 260) : (quiet ? 180 : 420),
         payload: { type: 'stage', node: node, label: node },
       });
       touchNode(node);
@@ -146,13 +181,19 @@
 
     var tokens = script.tokens || [];
     tokens.forEach(function (chunk) {
-      items.push({ delay: 90 + Math.random() * 80, payload: { type: 'token', text: chunk } });
+      items.push({ delay: quiet ? 45 : 90 + Math.random() * 80, payload: { type: 'token', text: chunk } });
       stats.tokens += chunk.length;
     });
     list.push({ role: 'assistant', content: script.text });
     items.push({
-      delay: 500,
-      payload: { type: 'response', response: script.text, intent: intent, compliance_passed: true, cache_hit: false },
+      delay: quiet ? 150 : 500,
+      payload: {
+        type: 'response',
+        response: script.text,
+        intent: intent,
+        compliance_passed: quiet ? null : true,
+        cache_hit: false,
+      },
     });
     items.push({ delay: 40, payload: { type: 'done' } });
     stats.calls += 1;
