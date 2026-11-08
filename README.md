@@ -8,6 +8,8 @@
 ![Tests](https://img.shields.io/badge/tests-394%20passed-brightgreen)
 ![Lint](https://img.shields.io/badge/ruff-clean-261230)
 
+**在线演示**：[lc-di-yan.github.io/HeteroAgent](https://lc-di-yan.github.io/HeteroAgent/) · 静态脚本化后端，不调用真实模型、不含密钥。
+
 ![聊天界面](docs/screenshots/chat-ui.png)
 
 <details>
@@ -84,6 +86,8 @@ graph TB
 ## 前端工作台
 
 工作台把链路状态放进同一条对话流：阶段进度、合规拦截、人工审批、服务端历史与运行指标。零构建（原生 ES 模块）、零外链，断网也能渲染。
+
+在线演示：[https://lc-di-yan.github.io/HeteroAgent/](https://lc-di-yan.github.io/HeteroAgent/)（静态脚本化后端；真实链路见下方快速开始）。
 
 [![工作台 · 暗色](docs/screenshots/frontend-home-dark.png)](docs/FRONTEND.md)
 

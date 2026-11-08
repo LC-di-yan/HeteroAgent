@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeteroAgent · 交互演示</title>
+<meta name="description" content="HeteroAgent 多 Agent 客服工作台的静态演示：流式阶段、合规拦截、人工审批、运行指标。">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    min-height: 100dvh;
+    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+    background: radial-gradient(120% 90% at 50% -20%, #16203a 0%, #0a0c10 55%, #08090c 100%);
+    color: #e8ecf2;
+    display: grid;
+    place-items: center;
+    padding: 40px 20px;
+    line-height: 1.6;
+  }
+  main { width: 100%; max-width: 880px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 34px; }
+  .mark {
+    width: 44px; height: 44px; display: grid; place-items: center;
+    border-radius: 13px; border: 1px solid rgba(111,155,255,.34);
+    background: rgba(111,155,255,.1); color: #6f9bff;
+  }
+  .brand strong { font-size: 16px; letter-spacing: -.01em; }
+  .brand span { display: block; font-size: 11px; color: #7f8a9a; letter-spacing: .02em; }
+  h1 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.15; letter-spacing: -.03em; font-weight: 650; text-wrap: balance; }
+  h1 em { font-style: normal; color: #98a3b2; font-weight: 500; }
+  .lead { margin-top: 14px; color: #98a3b2; max-width: 56ch; font-size: 15px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 42px; padding: 0 18px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: #141921; color: #e8ecf2;
+    font-size: 14px; font-weight: 550; text-decoration: none;
+    transition: background .2s, border-color .2s, transform .15s;
+  }
+  .btn:hover { background: #1b222c; border-color: rgba(255,255,255,.2); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: #6f9bff; border-color: transparent; color: #081120; font-weight: 650; }
+  .btn.primary:hover { background: #93b6ff; }
+  .shot {
+    margin-top: 38px; border: 1px solid rgba(255,255,255,.09); border-radius: 16px;
+    overflow: hidden; box-shadow: 0 30px 60px -30px rgba(0,0,0,.9);
+  }
+  .shot img { display: block; width: 100%; height: auto; }
+  .note { margin-top: 22px; font-size: 12px; color: #636d7a; line-height: 1.7; }
+  .note code { font-family: ui-monospace, Consolas, monospace; color: #98a3b2; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+  .chip { font-size: 11px; color: #7f8a9a; border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 4px 10px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <div class="mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+        <path d="M12 3.2l7.6 4.4v8.8L12 20.8 4.4 16.4V7.6z"/>
+        <path d="M12 8.3l3.7 2.1v4.2L12 16.7l-3.7-2.1v-4.2z"/>
+      </svg>
+    </div>
+    <div>
+      <strong>HeteroAgent</strong>
+      <span>多 Agent 客服 · LangGraph</span>
+    </div>
+  </div>
+
+  <h1>把合规、检索与工单，<em>收进一条对话流</em></h1>
+  <p class="lead">
+    静态演示版：界面与真实项目同一套代码，后端替换为浏览器内的脚本化实现。
+    可以体验阶段进度、Markdown 渲染、合规拦截、人工审批、历史与指标，<strong>不调用真实模型</strong>。
+  </p>
+
+  <div class="actions">
+    <a class="btn primary" href="./demo/">打开交互演示</a>
+    <a class="btn" href="https://github.com/LC-di-yan/HeteroAgent">GitHub 仓库</a>
+    <a class="btn" href="https://github.com/LC-di-yan/HeteroAgent/blob/main/docs/FRONTEND.md">前端说明</a>
+  </div>
+
+  <div class="chips">
+    <span class="chip">零构建 · 原生 ES 模块</span>
+    <span class="chip">零外链 · 离线可渲染</span>
+    <span class="chip">明暗双主题</span>
+    <span class="chip">移动端抽屉</span>
+  </div>
+
+  <figure class="shot">
+    <img src="./screenshots/frontend-home-dark.png" alt="HeteroAgent 工作台暗色界面">
+  </figure>
+
+  <p class="note">
+    想体验合规拦截：在演示里发送「你们能保证收益吗？」<br>
+    真实链路（真实 LLM + FAISS 检索 + 审批恢复）见仓库 README；演示页不包含任何密钥。
+  </p>
+</main>
+</body>
+</html>

@@ -6,6 +6,9 @@
 
 ![工作台 · 暗色](screenshots/frontend-home-dark.png)
 
+**在线演示（静态）**：[https://lc-di-yan.github.io/HeteroAgent/](https://lc-di-yan.github.io/HeteroAgent/)
+同一套界面，后端替换为浏览器内的脚本化实现（`docs/demo/mock-backend.js`）：不调用真实模型、不含密钥，适合对外展示。
+
 ## 快速体验
 
 ```bash
@@ -130,6 +133,20 @@ DEMO_MODE=true python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 - `GET /health/live` — 页脚健康状态、30s 轮询、离线横幅
 
 鉴权为可选：设置里的 API Key 会作为 `x-api-key` 发送，**只保存在本机 localStorage**。
+
+## 静态演示（GitHub Pages）
+
+Pages 只发布 `/docs`，所以演示页需要把前端资源复制进去：
+
+```bash
+python scripts/build_demo.py          # 重新生成 docs/demo/
+python scripts/build_demo.py --check  # 校验与 static/ 是否同步（CI / 测试会跑）
+```
+
+- `docs/index.html`：演示门户（链接演示、仓库与本文档）
+- `docs/demo/index.html`：由 `static/index.html` 改写资源路径生成，模块脚本前注入 `mock-backend.js`
+- `docs/demo/mock-backend.js`：拦截 `fetch`，模拟 SSE 阶段/token、合规拦截、审批、历史与指标
+- `tests/test_static_ui.py::test_demo_assets_in_sync` 防止演示资源与 `static/` 漂移
 
 ## 本地存储
 

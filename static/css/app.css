@@ -419,7 +419,8 @@ kbd {
 .rail-foot .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex: none; }
 .rail-foot[data-health="ok"] .status-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-weak); }
 .rail-foot[data-health="down"] .status-dot { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-weak); }
-.rail-foot .ver { margin-left: auto; font-family: var(--font-mono); font-size: 10px; }
+.rail-foot .ver { margin-left: auto; font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.rail-foot #healthText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-foot button { color: var(--text-3); display: grid; place-items: center; padding: 4px; border-radius: var(--r-xs); }
 .rail-foot button:hover { color: var(--text); background: var(--surface-2); }
 

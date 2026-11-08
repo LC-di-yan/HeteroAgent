@@ -121,6 +121,24 @@ def test_theme_tokens_and_banned_patterns() -> None:
     assert "prefers-reduced-motion" in css
 
 
+def test_demo_assets_in_sync() -> None:
+    demo = STATIC_DIR.parent / "docs" / "demo"
+    if not demo.is_dir():
+        return
+    pairs = [(STATIC_DIR / "css" / "app.css", demo / "assets" / "app.css")]
+    for js in (STATIC_DIR / "js").glob("*.js"):
+        pairs.append((js, demo / "assets" / "js" / js.name))
+    for src, dst in pairs:
+        assert dst.is_file(), f"缺少 demo 资源: {dst.relative_to(STATIC_DIR.parent)}"
+        assert dst.read_bytes() == src.read_bytes(), (
+            f"demo 资源过期: {dst.relative_to(STATIC_DIR.parent)}，请运行 python scripts/build_demo.py"
+        )
+    html = (demo / "index.html").read_text(encoding="utf-8")
+    assert "mock-backend.js" in html
+    assert 'src="assets/js/app.js"' in html
+    assert "assets/app.css" in html
+
+
 def test_static_modules_are_present() -> None:
     index = _read(INDEX)
     for module in ("app.js", "api.js", "icons.js", "markdown.js", "store.js"):

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HeteroAgent · 智能客服工作台</title>
+  <meta name="description" content="基于 LangGraph 的多 Agent 客服工作台：意图路由、混合检索、工单处理、合规审查与人工审批，全部在一条对话流内完成。">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0a0c10">
+  <meta property="og:title" content="HeteroAgent · 智能客服工作台">
+  <meta property="og:description" content="意图路由 → 知识检索 / 工单处理 → 合规审查 → 汇总回复。">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="assets/manifest.webmanifest">
+  <link rel="stylesheet" href="assets/app.css">
+  <script>
+    /* 主题在首次绘制前确定，避免闪白 */
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('ha.settings.v2') || '{}');
+        var theme = saved.theme || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (err) { /* keep default dark */ }
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#composerInput">跳到输入框</a>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="app" id="app" data-drawer="closed">
+    <!-- ═══ 侧栏 ═══ -->
+    <aside class="rail" id="rail" aria-label="会话与系统信息">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span data-icon="brand" data-icon-size="21"></span></div>
+        <div>
+          <div class="brand-name">HeteroAgent <span>v0.4</span></div>
+          <div class="brand-sub">多 Agent 客服 · LangGraph</div>
+        </div>
+      </div>
+
+      <div class="rail-actions">
+        <button class="btn-new" id="newChat" type="button">
+          <span data-icon="plus" data-icon-size="16"></span>
+          新建对话
+          <kbd>Ctrl K</kbd>
+        </button>
+      </div>
+
+      <div class="rail-scroll">
+        <div class="rail-section">
+          <div class="rail-label">
+            <span>会话</span>
+            <span class="count" id="convCount">0</span>
+          </div>
+          <div class="conv-list" id="convList" role="list"></div>
+          <p class="empty-conv" id="convEmpty">会话记录只保存在这台设备。开始一次对话后，这里会列出历史。</p>
+        </div>
+
+        <div class="rail-section">
+          <div class="rail-label"><span>处理链路</span></div>
+          <div class="pipeline-card">
+            <h3>固定拓扑 · 可审计</h3>
+            <div class="pipeline-node" data-node="supervisor_route">
+              <span data-icon="route" data-icon-size="15"></span>
+              <strong>意图路由</strong><em>Supervisor</em>
+            </div>
+            <div class="pipeline-node" data-node="knowledge_rag">
+              <span data-icon="book" data-icon-size="15"></span>
+              <strong>知识检索</strong><em>KnowledgeRAG</em>
+            </div>
+            <div class="pipeline-node" data-node="ticket_handler">
+              <span data-icon="ticket" data-icon-size="15"></span>
+              <strong>工单处理</strong><em>TicketHandler</em>
+            </div>
+            <div class="pipeline-node" data-node="compliance_check">
+              <span data-icon="shield" data-icon-size="15"></span>
+              <strong>合规审查</strong><em>Compliance</em>
+            </div>
+            <div class="pipeline-node" data-node="synthesize">
+              <span data-icon="pen" data-icon-size="15"></span>
+              <strong>汇总回复</strong><em>Synthesize</em>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail-foot" id="healthFoot" data-health="unknown">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="healthText">正在检查服务…</span>
+        <span class="ver" id="healthVer"></span>
+        <button type="button" id="railSettings" aria-label="打开设置" title="设置">
+          <span data-icon="sliders" data-icon-size="14"></span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ═══ 工作区 ═══ -->
+    <main class="workspace">
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="railToggle" type="button" aria-label="打开会话列表" aria-controls="rail" aria-expanded="false">
+          <span data-icon="menu" data-icon-size="18"></span>
+        </button>
+        <div class="topbar-title">
+          客服工作台
+          <span class="session-chip" id="sessionChip">session: —</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="themeToggle" type="button" aria-label="切换明暗主题" title="切换主题">
+            <span id="themeIcon"></span>
+          </button>
+          <button class="icon-btn" id="approvalsBtn" type="button" aria-label="待处理审批" aria-controls="drawer" aria-expanded="false" title="待处理审批">
+            <span data-icon="shield" data-icon-size="18"></span>
+            <span class="dot-badge" id="approvalCount" hidden>0</span>
+          </button>
+          <button class="icon-btn" id="settingsBtn" type="button" aria-label="设置" aria-controls="drawer" aria-expanded="false" title="设置">
+            <span data-icon="sliders" data-icon-size="18"></span>
+          </button>
+        </div>
+      </header>
+
+      <div class="banner" id="banner" role="status">
+        <span data-icon="alert" data-icon-size="14"></span>
+        <span id="bannerText">网络已断开，恢复后可以继续发送。</span>
+      </div>
+
+      <div class="transcript" id="transcript" role="log" aria-label="对话记录" tabindex="-1">
+        <div class="transcript-inner" id="transcriptInner">
+          <section class="welcome" id="welcome">
+            <div class="welcome-eyebrow"><span class="status-dot" aria-hidden="true"></span>合规审查已启用 · 全链路可审计</div>
+            <h1>一次对话，走完<span class="muted">检索、工单与合规</span></h1>
+            <p class="welcome-lead">意图路由、混合检索（FAISS + BM25）、工单处理与合规审查在同一条链路里完成。命中风险的请求会自动转入人工审批，不会悄悄放过。</p>
+            <div class="welcome-grid" id="welcomeGrid">
+              <button class="prompt-card" type="button" data-prompt="理财产品A的收益率是多少？" style="--i:0">
+                <span data-icon="layers" data-icon-size="16"></span>
+                <span class="pc-title">理财产品 A 的收益率</span>
+                <span class="pc-desc">知识库检索 · 产品 FAQ</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="我要申请退款" style="--i:1">
+                <span data-icon="refresh" data-icon-size="16"></span>
+                <span class="pc-title">申请退款</span>
+                <span class="pc-desc">工单流程 · 售后政策</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="如何开户？需要什么材料？" style="--i:2">
+                <span data-icon="file" data-icon-size="16"></span>
+                <span class="pc-title">开户需要什么材料</span>
+                <span class="pc-desc">知识库检索 · 开户指引</span>
+              </button>
+              <button class="prompt-card" type="button" data-prompt="帮我查一下订单状态" style="--i:3">
+                <span data-icon="message" data-icon-size="16"></span>
+                <span class="pc-title">查询订单状态</span>
+                <span class="pc-desc">工单处理 · 订单查询</span>
+              </button>
+            </div>
+          </section>
+
+          <div class="messages" id="messages"></div>
+        </div>
+
+      </div>
+
+      <footer class="composer">
+        <button class="jump-latest" id="jumpLatest" type="button" data-visible="false">
+          <span data-icon="chevronDown" data-icon-size="14"></span>
+          最新回复
+        </button>
+        <form class="composer-inner" id="composerForm" autocomplete="off">
+          <div class="composer-card">
+            <textarea class="composer-input" id="composerInput" rows="1" maxlength="8000"
+              placeholder="描述您的问题，或直接粘贴订单号…" aria-label="消息输入框"></textarea>
+            <div class="composer-tools">
+              <button class="stop-btn" id="stopBtn" type="button" aria-label="停止生成" title="停止生成">
+                <span data-icon="stop" data-icon-size="14"></span>
+              </button>
+              <button class="send-btn" id="sendBtn" type="submit" aria-label="发送消息" title="发送">
+                <span data-icon="arrowUp" data-icon-size="18"></span>
+              </button>
+            </div>
+          </div>
+          <div class="composer-foot">
+            <kbd>Enter</kbd><span>发送</span>
+            <span class="sep">·</span>
+            <kbd>Shift</kbd><span>+</span><kbd>Enter</kbd><span>换行</span>
+            <span class="sep hint-extra">·</span>
+            <span class="hint-extra">所有回复都会经过合规审查</span>
+            <span class="counter" id="charCount"></span>
+          </div>
+        </form>
+      </footer>
+    </main>
+
+    <!-- ═══ 抽屉 ═══ -->
+    <aside class="drawer" id="drawer" aria-label="详情面板">
+      <div class="drawer-head">
+        <h2 id="drawerTitle">会话历史</h2>
+        <button class="icon-btn" id="drawerClose" type="button" aria-label="关闭面板">
+          <span data-icon="close" data-icon-size="18"></span>
+        </button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="面板切换">
+        <button class="tab" type="button" role="tab" id="tab-history" data-tab="history" aria-selected="true" aria-controls="panel-history">历史<span class="num" id="histCount"></span></button>
+        <button class="tab" type="button" role="tab" id="tab-approvals" data-tab="approvals" aria-selected="false" aria-controls="panel-approvals">审批<span class="num" id="apprCount">0</span></button>
+        <button class="tab" type="button" role="tab" id="tab-metrics" data-tab="metrics" aria-selected="false" aria-controls="panel-metrics">指标</button>
+        <button class="tab" type="button" role="tab" id="tab-settings" data-tab="settings" aria-selected="false" aria-controls="panel-settings">设置</button>
+      </div>
+      <div class="drawer-body">
+        <section class="panel" id="panel-history" data-panel="history" data-active="true" role="tabpanel" aria-labelledby="tab-history"></section>
+        <section class="panel" id="panel-approvals" data-panel="approvals" role="tabpanel" aria-labelledby="tab-approvals"></section>
+        <section class="panel" id="panel-metrics" data-panel="metrics" role="tabpanel" aria-labelledby="tab-metrics"></section>
+        <section class="panel" id="panel-settings" data-panel="settings" role="tabpanel" aria-labelledby="tab-settings"></section>
+      </div>
+    </aside>
+
+    <div class="scrim" id="scrim" hidden></div>
+  </div>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <p id="liveStatus" class="visually-hidden" aria-live="polite"></p>
+
+  <script src="mock-backend.js"></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

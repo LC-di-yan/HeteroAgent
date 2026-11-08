@@ -13,6 +13,7 @@
 - 内联错误态：400/401/413/429/503 与断网分别给出可执行提示，429 带冷却倒计时
 - 无障碍：语义地标、跳过导航、`aria-live` 播报、焦点可见、`prefers-reduced-motion`
 - 文档：新增 [docs/FRONTEND.md](docs/FRONTEND.md)（截图、状态机、SSE/AG-UI 契约、无障碍与验证）；README 增加「前端工作台」章节
+- 静态演示：`docs/demo/`（GitHub Pages）+ 浏览器内 mock 后端；`scripts/build_demo.py` 同步 `static/` 资源，契约测试防止漂移
 
 ### 变更
 - 视觉重做：石墨中性色 + 单一冷蓝强调色；移除紫蓝渐变与 emoji 图标，改为统一描边的内联 SVG 图标集
