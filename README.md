@@ -162,6 +162,7 @@ curl -X POST http://127.0.0.1:8000/api/chat ^
 | --- | --- | --- |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — / 官方地址 | 模型凭据，支持兼容网关 |
 | `MODEL_NAME` / `LIGHT_MODEL_NAME` | `gpt-5.1` / 空 | 主模型用于生成与合规；轻模型仅用于路由（空=复用主模型） |
+| `LIGHT_BASE_URL` / `LIGHT_API_KEY` | 空 | 轻模型可独走一个供应商（例如更小的决策模型），留空复用主模型 |
 | `USE_RESPONSES_API` / `STREAM_USAGE` | `false` / `true` | Responses API 与流式 usage 回传（供应商不支持时参数自动忽略） |
 | `STRUCTURED_OUTPUT_ENABLED` | `true` | 代理不支持 `response_format` 时设 `false`，避免每次决策多一次失败请求 |
 | `PROMPT_CACHE_KEY` / `REASONING_EFFORT` | 空 / 空 | 提示词缓存槽位、推理强度（可选） |
