@@ -4,7 +4,7 @@
 
 **零构建、零外链**：原生 ES 模块 + 设计令牌 CSS，不需要打包器，不请求任何 CDN；断网环境下页面照常渲染（旧的单文件版本曾因 Google Fonts 阻塞而白屏）。
 
-![工作台 · 暗色](screenshots/frontend-home-dark.png)
+![工作台 · 暗色](screenshots/frontend-home-dark.jpg)
 
 **在线演示（静态）**：[https://lc-di-yan.github.io/HeteroAgent/](https://lc-di-yan.github.io/HeteroAgent/)
 同一套界面，后端替换为浏览器内的脚本化实现（`docs/demo/mock-backend.js`）：不调用真实模型、不含密钥，适合对外展示。
@@ -27,35 +27,35 @@ DEMO_MODE=true python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 问候/感谢/能力询问走后端的 `smalltalk` 快路径（不检索、不调模型），阶段轨里显示为「寒暄回应」；命中后只保留耗时标签，不显示意图与合规徽章。
 
-![流式阶段](screenshots/frontend-streaming.png)
+![流式阶段](screenshots/frontend-streaming.jpg)
 
 ### 回答与元信息
 
 每条回复带意图、合规结果、耗时与字数；命中语义缓存时额外标记。
 
-![回答](screenshots/frontend-answer.png)
+![回答](screenshots/frontend-answer.jpg)
 
 ### 人工审批（HITL）
 
 合规不通过 → 图内 `interrupt()` → 聊天流里直接审批；也可以从抽屉的审批队列处理，并校验哈希审计链。
 
-![审批卡片](screenshots/frontend-approval-card.png)
+![审批卡片](screenshots/frontend-approval-card.jpg)
 
-![审批队列](screenshots/frontend-approvals.png)
+![审批队列](screenshots/frontend-approvals.jpg)
 
 ### 运行指标 / 设置
 
 指标来自 `GET /api/metrics`（节点 P95、错误率、token、成本、MCP 熔断状态）；设置里可切换主题、填写 `x-api-key`、修改 `user_id`、切换 legacy / AG-UI 流式协议。
 
-![运行指标](screenshots/frontend-metrics.png)
+![运行指标](screenshots/frontend-metrics.jpg)
 
-![设置](screenshots/frontend-settings.png)
+![设置](screenshots/frontend-settings.jpg)
 
 ### 浅色与移动端
 
-![浅色主题](screenshots/frontend-home-light.png)
+![浅色主题](screenshots/frontend-home-light.jpg)
 
-![移动端](screenshots/frontend-mobile.png)
+![移动端](screenshots/frontend-mobile.jpg)
 
 ## 设计原则
 

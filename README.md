@@ -10,12 +10,12 @@
 
 **在线演示**：[lc-di-yan.github.io/HeteroAgent](https://lc-di-yan.github.io/HeteroAgent/) · 静态脚本化后端，不调用真实模型、不含密钥。
 
-![聊天界面](docs/screenshots/chat-ui.png)
+![聊天界面](docs/screenshots/frontend-home-dark.jpg)
 
 <details>
 <summary>合规拦截 → 聊天流内直接审批（HITL）</summary>
 
-![Approval](docs/screenshots/approval-flow.png)
+![Approval](docs/screenshots/frontend-approval-card.jpg)
 
 </details>
 
@@ -89,7 +89,7 @@ graph TB
 
 在线演示：[https://lc-di-yan.github.io/HeteroAgent/](https://lc-di-yan.github.io/HeteroAgent/)（静态脚本化后端；真实链路见下方快速开始）。
 
-[![工作台 · 暗色](docs/screenshots/frontend-home-dark.png)](docs/FRONTEND.md)
+[![工作台 · 暗色](docs/screenshots/frontend-home-dark.jpg)](docs/FRONTEND.md)
 
 | 能力 | 说明 |
 | --- | --- |
